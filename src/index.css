@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --canvas: #ffffff;
+  --canvas-muted: #f6f5f3;
+  --surface: #ffffff;
+  --surface-muted: #f3f1ef;
+  --ink: #161412;
+  --ink-muted: #6c6762;
+  --ink-subtle: #8f8983;
+  --line: #e7e3de;
+  --accent: #c45b72;
+  --accent-hover: #b14e65;
+  --accent-soft: #f6eef0;
+  --accent-ring: color-mix(in srgb, var(--accent) 22%, transparent);
+  --status-upcoming: #c45b72;
+  --status-ongoing: #3f6f5b;
+  --status-completed: #6c6762;
+  color-scheme: light;
+}
+
+.dark {
+  --canvas: #11100f;
+  --canvas-muted: #181716;
+  --surface: #1c1b1a;
+  --surface-muted: #232120;
+  --ink: #f4f1ee;
+  --ink-muted: #a8a29c;
+  --ink-subtle: #7d776f;
+  --line: #2c2a28;
+  --accent: #c45b72;
+  --accent-hover: #d06b81;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --accent-ring: color-mix(in srgb, var(--accent) 32%, transparent);
+  --status-upcoming: #d06b81;
+  --status-ongoing: #7d9f8d;
+  --status-completed: #8f8983;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --color-canvas: var(--canvas);
+  --color-canvas-muted: var(--canvas-muted);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ring: var(--accent-ring);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display);
+  font-feature-settings: "soft" 1, "opsz" 96;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
