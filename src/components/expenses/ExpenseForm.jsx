@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
+import { useSheetClose } from '../ui/Sheet.jsx'
 import { displayName } from '../../data/mock.js'
 import { convert, CURRENCIES, HOME_CURRENCY, roundMoney } from '../../lib/currency.js'
 import { CATEGORY_LABEL, CATEGORY_OPTIONS, getShareDelta, SHARE_TOLERANCE } from '../../lib/expenses.js'
 import { formatMoney } from '../../lib/format.js'
-import { resolveUser } from '../../lib/people.js'
+import { peopleForTrip } from '../../lib/people.js'
 import { IconCheck } from '../icons.jsx'
 import { Avatar } from '../ui/Avatar.jsx'
 import { Button } from '../ui/Button.jsx'
@@ -19,19 +20,6 @@ function todayIso() {
   const month = String(now.getMonth() + 1).padStart(2, '0')
   const day = String(now.getDate()).padStart(2, '0')
   return `${now.getFullYear()}-${month}-${day}`
-}
-
-function membersForTrip(trip, users, expense) {
-  if (!trip) return []
-  const memberIds = trip.members.map((member) => member.userId)
-  const extra = expense ? [expense.payerId, ...expense.shares.map((share) => share.userId)] : []
-  const ids = [...new Set([...memberIds, ...extra])]
-  const memberSet = new Set(memberIds)
-  return ids.map((userId) => ({
-    userId,
-    former: !memberSet.has(userId),
-    user: resolveUser(userId, users),
-  }))
 }
 
 function initialTripId(expense, defaultTripId, trips) {
@@ -63,21 +51,28 @@ export function ExpenseForm({
   users,
   currentUser,
   expense,
+  draft,
   defaultTripId,
   lockTrip = false,
   onSubmit,
   onDelete,
   onCancel,
+  onDirtyChange,
 }) {
+  const requestClose = useSheetClose()
   const startingTripId = initialTripId(expense, defaultTripId, trips)
   const startingTrip = trips.find((item) => item.id === startingTripId)
   const startingParticipants = initialParticipantIds(expense, startingTrip)
   const [tripId, setTripId] = useState(startingTripId)
-  const [amount, setAmount] = useState(expense ? String(expense.amount) : '')
-  const [currency, setCurrency] = useState(expense?.currency ?? startingTrip?.currency ?? HOME_CURRENCY)
-  const [category, setCategory] = useState(expense?.category ?? 'food')
-  const [description, setDescription] = useState(expense?.description ?? '')
-  const [date, setDate] = useState(expense?.date ?? todayIso())
+  const [amount, setAmount] = useState(
+    expense ? String(expense.amount) : draft?.amount != null ? String(draft.amount) : '',
+  )
+  const [currency, setCurrency] = useState(
+    expense?.currency ?? draft?.currency ?? startingTrip?.currency ?? HOME_CURRENCY,
+  )
+  const [category, setCategory] = useState(expense?.category ?? draft?.category ?? 'food')
+  const [description, setDescription] = useState(expense?.description ?? draft?.description ?? '')
+  const [date, setDate] = useState(expense?.date ?? draft?.date ?? todayIso())
   const [payerId, setPayerId] = useState(expense?.payerId ?? currentUser.id)
   const [participantIds, setParticipantIds] = useState(startingParticipants)
   const [shareDrafts, setShareDrafts] = useState(() =>
@@ -86,7 +81,10 @@ export function ExpenseForm({
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const trip = trips.find((item) => item.id === tripId)
-  const members = useMemo(() => membersForTrip(trip, users, expense), [trip, users, expense])
+  const members = useMemo(
+    () => peopleForTrip(trip, expense ? [expense] : [], users),
+    [trip, users, expense],
+  )
 
   const total = parseAmount(amount)
   const shares = participantIds.map((userId) => ({
@@ -154,11 +152,18 @@ export function ExpenseForm({
       date,
       payerId,
       shares: shares.map((share) => ({ userId: share.userId, amount: roundMoney(share.amount) })),
+      bookingId: expense?.bookingId ?? draft?.bookingId,
     })
   }
 
   return (
-    <form id="expense-form" onSubmit={handleSubmit} className="space-y-5">
+    <form
+      id="expense-form"
+      onSubmit={handleSubmit}
+      onInput={() => onDirtyChange?.()}
+      onChange={() => onDirtyChange?.()}
+      className="space-y-5"
+    >
       {!lockTrip ? (
         <Field label="Trip">
           <select className={fieldClass} value={tripId} onChange={(event) => applyTrip(event.target.value)}>
@@ -209,6 +214,9 @@ export function ExpenseForm({
           placeholder="Lunch"
         />
       </Field>
+      {draft?.bookingId ? (
+        <p className="text-[13px] text-ink-subtle">Linked to a booking. It will not create a second expense on its own.</p>
+      ) : null}
 
       <div>
         <p className="mb-2 text-[12px] tracking-[0.08em] text-ink-subtle uppercase">Category</p>
@@ -219,7 +227,10 @@ export function ExpenseForm({
               <button
                 key={id}
                 type="button"
-                onClick={() => setCategory(id)}
+                onClick={() => {
+                  setCategory(id)
+                  onDirtyChange?.()
+                }}
                 className={`rounded-md px-2.5 py-1.5 text-[13px] ${
                   selected ? 'bg-accent-soft text-accent' : 'text-ink-muted hover:bg-canvas-muted'
                 }`}
@@ -244,7 +255,10 @@ export function ExpenseForm({
               <button
                 key={member.userId}
                 type="button"
-                onClick={() => setPayerId(member.userId)}
+                onClick={() => {
+                  setPayerId(member.userId)
+                  onDirtyChange?.()
+                }}
                 className={`flex shrink-0 items-center gap-2 rounded-md border px-2.5 py-2 ${
                   selected ? 'border-transparent bg-accent-soft text-accent' : 'border-line text-ink-muted'
                 }`}
@@ -269,7 +283,10 @@ export function ExpenseForm({
               <li key={member.userId} className="flex items-center gap-3 py-3">
                 <button
                   type="button"
-                  onClick={() => toggleParticipant(member.userId)}
+                  onClick={() => {
+                    toggleParticipant(member.userId)
+                    onDirtyChange?.()
+                  }}
                   className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-[11px] ${
                     included ? 'border-transparent bg-accent-soft text-accent' : 'border-line text-ink-subtle'
                   }`}
@@ -333,7 +350,11 @@ export function ExpenseForm({
       ) : null}
 
       <div className="flex items-center justify-between gap-3 pt-1">
-        <button type="button" className="text-sm text-ink-muted" onClick={onCancel}>
+        <button
+          type="button"
+          className="text-sm text-ink-muted"
+          onClick={() => (requestClose ?? onCancel)?.()}
+        >
           Cancel
         </button>
         <Button type="submit" disabled={!balanced}>

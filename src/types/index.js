@@ -51,6 +51,8 @@
  * @property {string} description
  * @property {string} payerId Who paid. Independent of shares.
  * @property {ExpenseShare[]} shares Explicit unequal amounts; not an equal split
+ * @property {string} [bookingId] Optional link to a booking; never auto-duplicated
+ * @property {string} [placeId]
  * @property {string} [createdBy]
  * @property {string} [createdAt]
  * @property {string} [updatedAt]
@@ -95,12 +97,18 @@
  *
  * @typedef {Object} ItineraryItem
  * @property {string} id
- * @property {string} time HH:mm or empty
+ * @property {string} tripId
+ * @property {number} [day]
+ * @property {string} time HH:mm start; kept for existing itineraries
+ * @property {string} [startTime]
+ * @property {string} [endTime]
+ * @property {string} [type]
  * @property {string} title
  * @property {ItineraryCategory} category
- * @property {string} [place]
+ * @property {string} [place] Display fallback when no placeId is set
  * @property {string} [notes]
  * @property {string} [placeId]
+ * @property {string} [bookingId]
  * @property {string} [createdBy]
  * @property {string} [updatedBy]
  * @property {string} [createdAt]
@@ -116,17 +124,146 @@
  * @property {string} tripId
  * @property {ItineraryDay[]} days
  *
+ * @typedef {'saved' | 'planned' | 'visited'} PlaceStatus
+ * @typedef {'flight' | 'hotel' | 'train' | 'bus' | 'ticket' | 'restaurant' | 'other'} BookingType
+ * @typedef {'confirmed' | 'pending' | 'cancelled'} BookingStatus
+ *
  * @typedef {Object} Place
  * @property {string} id
  * @property {string} tripId
  * @property {string} name
- * @property {string} [area]
  * @property {string} [category]
- * @property {number} [lat]
- * @property {number} [lng]
- * @property {number} [mapX] 0–100 schematic position
- * @property {number} [mapY] 0–100 schematic position
+ * @property {string} [address]
+ * @property {string} [area]
+ * @property {number} [latitude]
+ * @property {number} [longitude]
  * @property {string} [notes]
+ * @property {string} [website]
+ * @property {string} [openingHours]
+ * @property {number} [estimatedCost]
+ * @property {string} [currency]
+ * @property {number} [rating]
+ * @property {PlaceStatus} status
+ * @property {string} [plannedDay] ISO date YYYY-MM-DD
+ * @property {string} [createdBy]
+ * @property {string} [createdAt]
+ * @property {string} [updatedAt]
+ * @property {number} [mapX] Schematic fallback 0–100
+ * @property {number} [mapY] Schematic fallback 0–100
+ *
+ * @typedef {Object} BookingDocument
+ * @property {string} id
+ * @property {string} name
+ *
+ * @typedef {Object} Booking
+ * @property {string} id
+ * @property {string} tripId
+ * @property {BookingType} type
+ * @property {string} title
+ * @property {string} [provider]
+ * @property {string} [confirmationNumber]
+ * @property {string} [startDate]
+ * @property {string} [startTime]
+ * @property {string} [endDate]
+ * @property {string} [endTime]
+ * @property {string} [location]
+ * @property {number} [cost]
+ * @property {string} [currency]
+ * @property {string} [notes]
+ * @property {BookingStatus} status
+ * @property {string} [createdBy]
+ * @property {string} [createdAt]
+ * @property {string} [updatedAt]
+ * @property {string} [expenseId]
+ * @property {BookingDocument[]} [documents]
+ */
+
+/**
+ * Personal packing, checklist, notes, and memories.
+ * Local-only. Scoped by tripId + userId. Not Cloud. Independent of trip.notes.
+ *
+ * @typedef {Object} PackingCategory
+ * @property {string} id
+ * @property {string} tripId
+ * @property {string} userId
+ * @property {string} name
+ * @property {number} sortOrder
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ *
+ * @typedef {Object} PackingItem
+ * @property {string} id
+ * @property {string} tripId
+ * @property {string} userId
+ * @property {string} categoryId
+ * @property {string} name
+ * @property {number} quantity integer >= 1
+ * @property {string} note
+ * @property {boolean} packed
+ * @property {number} sortOrder
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ *
+ * @typedef {Object} ChecklistCategory
+ * @property {string} id
+ * @property {string} tripId
+ * @property {string} userId
+ * @property {'before' | 'packing' | 'during' | 'after'} phase
+ * @property {string} name
+ * @property {number} sortOrder
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ *
+ * @typedef {Object} ChecklistItem
+ * @property {string} id
+ * @property {string} tripId
+ * @property {string} userId
+ * @property {string} categoryId
+ * @property {string} name
+ * @property {boolean} done
+ * @property {string} note
+ * @property {string | null} dueDate YYYY-MM-DD or null
+ * @property {number} sortOrder
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ *
+ * @typedef {Object} TripNote
+ * @property {string} id
+ * @property {string} tripId
+ * @property {string} userId
+ * @property {string} title
+ * @property {string} body
+ * @property {string | null} date YYYY-MM-DD or null
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ *
+ * @typedef {Object} Memory
+ * @property {string} id
+ * @property {string} tripId
+ * @property {string} userId
+ * @property {string} caption
+ * @property {string | null} date YYYY-MM-DD or null
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ */
+
+/**
+ * @typedef {Object} PendingOperation
+ * @property {string} id
+ * @property {string} entity
+ * @property {string} action
+ * @property {unknown} [payload]
+ * @property {string} createdAt
+ * @property {'pending' | 'syncing' | 'retryable' | 'failed' | 'blocked'} status
+ * @property {string | null} [cloudTripId]
+ * @property {string | null} [localEntityId]
+ * @property {string | null} [cloudEntityId]
+ * @property {number} [attemptCount]
+ * @property {string | null} [lastAttemptAt]
+ * @property {string | null} [nextAttemptAt]
+ * @property {string | null} [lastError]
+ * @property {string | null} [blockedBy]
+ * @property {string | null} [dependsOn]
  */
 
 export {}

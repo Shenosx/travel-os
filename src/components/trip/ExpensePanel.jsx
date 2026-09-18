@@ -6,6 +6,7 @@ import { ExpenseRow } from '../expenses/ExpenseRow.jsx'
 import { SettlementPanel } from '../expenses/SettlementPanel.jsx'
 import { Avatar } from '../ui/Avatar.jsx'
 import { Card } from '../ui/Card.jsx'
+import { EmptyState } from '../ui/EmptyState.jsx'
 
 export function ExpensePanel({
   trip,
@@ -26,17 +27,17 @@ export function ExpensePanel({
 
   if (!expenses.length) {
     return (
-      <div className="border border-line px-5 py-10 text-center">
-        <p className="text-sm text-ink-muted">No expenses yet.</p>
-        <p className="mt-1 text-[13px] text-ink-subtle">
-          Add one from the + button. Shares are exact amounts, not an equal split.
-        </p>
-        {canAdd ? (
-          <button type="button" className="mt-4 text-sm text-accent" onClick={() => openCreate(trip?.id)}>
-            Add expense
-          </button>
-        ) : null}
-      </div>
+      <EmptyState
+        title="No expenses yet"
+        body="Add one with an amount, a payer, and each person’s share. Shares are exact amounts, not an equal split."
+        action={
+          canAdd ? (
+            <button type="button" className="text-sm text-accent" onClick={() => openCreate(trip?.id)}>
+              Add expense
+            </button>
+          ) : null
+        }
+      />
     )
   }
 
@@ -121,8 +122,8 @@ export function ExpensePanel({
 
 function netCopy(isYou, net, currency) {
   const amount = formatMoney(Math.abs(net), currency)
-  if (net >= 0) return isYou ? `you are owed ${amount}` : `is owed ${amount}`
-  return isYou ? `you owe ${amount}` : `owes ${amount}`
+  if (net >= 0) return isYou ? `are owed ${amount}` : `is owed ${amount}`
+  return isYou ? `owe ${amount}` : `owes ${amount}`
 }
 
 function Stat({ label, value }) {

@@ -1,0 +1,18 @@
+{
+  "name": "Travel OS",
+  "short_name": "Travel OS",
+  "description": "A quiet place for trips, days, places, and spending.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#c45b72",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

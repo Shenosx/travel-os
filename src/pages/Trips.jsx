@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react'
+import { useQuickAdd } from '../components/layout/QuickAddButton.jsx'
+import { CloudTripsSection } from '../components/trips/CloudTripsSection.jsx'
 import { TripCard } from '../components/trips/TripCard.jsx'
 import { Button } from '../components/ui/Button.jsx'
+import { EmptyState } from '../components/ui/EmptyState.jsx'
 import { useAppData } from '../hooks/useAppData.jsx'
+import { useCloudTrips } from '../hooks/useCloudTrips.js'
 import { getTripSpending, getTripStatus } from '../lib/trips.js'
 
 const FILTERS = [
@@ -12,7 +16,9 @@ const FILTERS = [
 ]
 
 export function TripsPage() {
-  const { trips, expenses } = useAppData()
+  const { trips, expenses, currentUser } = useAppData()
+  const cloud = useCloudTrips()
+  const { openAction } = useQuickAdd()
   const [filter, setFilter] = useState('all')
 
   const visible = useMemo(() => {
@@ -37,7 +43,7 @@ export function TripsPage() {
           </h1>
         </div>
         <p className="max-w-[32ch] text-sm text-ink-muted">
-          {trips.length} trips on file. Create the next one from the add button.
+          {trips.length} {trips.length === 1 ? 'trip' : 'trips'} on file. Create the next one from the add button.
         </p>
       </div>
 
@@ -62,8 +68,25 @@ export function TripsPage() {
       {visible.length ? (
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           {visible.map((trip) => (
-            <TripCard key={trip.id} trip={trip} spent={getTripSpending(expenses, trip.id)} />
+            <TripCard
+              key={trip.id}
+              trip={trip}
+              spent={getTripSpending(expenses, trip.id)}
+              invited={!trip.members.some((member) => member.userId === currentUser.id)}
+            />
           ))}
+        </div>
+      ) : !trips.length ? (
+        <div className="mt-8">
+          <EmptyState
+            title="No journeys on file yet"
+            body="Start with a destination and dates. The rest of the trip can follow."
+            action={
+              <button type="button" className="text-sm text-accent" onClick={() => openAction('trip')}>
+                Add a trip
+              </button>
+            }
+          />
         </div>
       ) : (
         <div className="mt-8 border border-line px-5 py-12 text-center">
@@ -73,6 +96,19 @@ export function TripsPage() {
           </Button>
         </div>
       )}
+
+      {cloud.visible ? (
+        <CloudTripsSection
+          trips={cloud.trips}
+          loading={cloud.loading}
+          error={cloud.error}
+          currentUserId={cloud.currentUserId}
+          onCreate={cloud.createTrip}
+          onUpdate={cloud.updateTrip}
+          onDelete={cloud.deleteTrip}
+          onReload={cloud.reload}
+        />
+      ) : null}
     </div>
   )
 }

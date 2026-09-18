@@ -2,7 +2,7 @@
  * Central permission rules for shared trips.
  * UI should hide unavailable actions, and data mutations must also call these.
  *
- * @typedef {'viewTrip' | 'editTrip' | 'editItinerary' | 'addExpense' | 'editExpense' | 'deleteExpense' | 'addPlace' | 'viewMembers' | 'manageMembers' | 'inviteMembers' | 'changeMemberRole' | 'removeMember' | 'deleteTrip' | 'votePoll'} PermissionAction
+ * @typedef {'viewTrip' | 'editTrip' | 'editItinerary' | 'addExpense' | 'editExpense' | 'deleteExpense' | 'addPlace' | 'editPlace' | 'deletePlace' | 'addBooking' | 'editBooking' | 'deleteBooking' | 'viewMembers' | 'manageMembers' | 'inviteMembers' | 'changeMemberRole' | 'removeMember' | 'deleteTrip' | 'votePoll'} PermissionAction
  */
 
 /** @type {Record<import('../types').MemberRole, Set<string>>} */
@@ -15,6 +15,11 @@ const ROLE_GRANTS = {
     'editExpense',
     'deleteExpense',
     'addPlace',
+    'editPlace',
+    'deletePlace',
+    'addBooking',
+    'editBooking',
+    'deleteBooking',
     'viewMembers',
     'manageMembers',
     'inviteMembers',
@@ -28,6 +33,9 @@ const ROLE_GRANTS = {
     'editItinerary',
     'addExpense',
     'addPlace',
+    'editPlace',
+    'addBooking',
+    'editBooking',
     'viewMembers',
     'votePoll',
   ]),
@@ -90,6 +98,61 @@ export function canDeleteExpense(trip, userId, expense) {
   return canEditExpense(trip, userId, expense)
 }
 
+/** @param {{ createdBy?: string }} record */
+export function getRecordOwnerId(record) {
+  return record?.createdBy ?? null
+}
+
+/**
+ * Editors may edit any place on the trip. Owners may always edit.
+ *
+ * @param {import('../types').Trip | null | undefined} trip
+ * @param {string} userId
+ * @param {import('../types').Place} [place]
+ */
+export function canEditPlace(trip, userId, place) {
+  if (!canOnTrip(trip, userId, 'editPlace')) return false
+  return Boolean(place)
+}
+
+/**
+ * Editors may delete only places they created. Owners may delete any.
+ *
+ * @param {import('../types').Trip | null | undefined} trip
+ * @param {string} userId
+ * @param {import('../types').Place} place
+ */
+export function canDeletePlace(trip, userId, place) {
+  const role = getMemberRole(trip, userId)
+  if (role === 'owner') return true
+  if (role === 'editor') return getRecordOwnerId(place) === userId
+  return false
+}
+
+/**
+ * @param {import('../types').Trip | null | undefined} trip
+ * @param {string} userId
+ * @param {import('../types').Booking} [booking]
+ */
+export function canEditBooking(trip, userId, booking) {
+  if (!canOnTrip(trip, userId, 'editBooking')) return false
+  return Boolean(booking)
+}
+
+/**
+ * Editors may delete only bookings they created. Owners may delete any.
+ *
+ * @param {import('../types').Trip | null | undefined} trip
+ * @param {string} userId
+ * @param {import('../types').Booking} booking
+ */
+export function canDeleteBooking(trip, userId, booking) {
+  const role = getMemberRole(trip, userId)
+  if (role === 'owner') return true
+  if (role === 'editor') return getRecordOwnerId(booking) === userId
+  return false
+}
+
 /**
  * @param {import('../types').Trip | null | undefined} trip
  * @param {string} actorId
@@ -130,6 +193,7 @@ export function getTripPermissions(trip, userId) {
     canEditItinerary: can(role, 'editItinerary'),
     canAddExpense: can(role, 'addExpense'),
     canAddPlace: can(role, 'addPlace'),
+    canAddBooking: can(role, 'addBooking'),
     canViewMembers: can(role, 'viewMembers'),
     canManageMembers: can(role, 'manageMembers'),
     canInvite: can(role, 'inviteMembers'),
@@ -139,5 +203,9 @@ export function getTripPermissions(trip, userId) {
     canVote: can(role, 'votePoll'),
     canEditExpense: (expense) => canEditExpense(trip, userId, expense),
     canDeleteExpense: (expense) => canDeleteExpense(trip, userId, expense),
+    canEditPlace: (place) => canEditPlace(trip, userId, place),
+    canDeletePlace: (place) => canDeletePlace(trip, userId, place),
+    canEditBooking: (booking) => canEditBooking(trip, userId, booking),
+    canDeleteBooking: (booking) => canDeleteBooking(trip, userId, booking),
   }
 }

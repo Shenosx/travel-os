@@ -1,20 +1,14 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react'
-import {
-  CURRENT_USER_ID,
-  activities as seedActivities,
-  expenses as seedExpenses,
-  invitations as seedInvitations,
-  itineraries as seedItineraries,
-  places as seedPlaces,
-  polls as seedPolls,
-  trips as seedTrips,
-  users as seedUsers,
-  getUserById,
-} from '../data/mock.js'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { getUserById, CURRENT_USER_ID } from '../data/mock.js'
+import { createSeedSnapshot } from '../data/seed.js'
+import { loadSnapshot, saveSnapshot } from '../data/storage.js'
 import {
   acceptInvitation as applyAcceptInvitation,
+  acceptInvitationAsInvitee,
   changeMemberRole as applyChangeMemberRole,
-  inviteLink,
+  ensureUserForInvite,
+  findJoinTarget,
+  liveInviteLink,
   isOpenInvitation,
   openInvitationsForEmail,
   removeMember as applyRemoveMember,
@@ -22,14 +16,53 @@ import {
   voteOnPoll,
 } from '../lib/collaboration.js'
 import { nowIso } from '../lib/dates.js'
-import { HOME_CURRENCY, withConvertedAmount } from '../lib/currency.js'
 import { createId } from '../lib/format.js'
+import { normalizePendingOp } from '../lib/sync/pendingOps.js'
+import { sanitizeTripMigration } from '../lib/migration/mappings.js'
+import { clearItineraryRefs, moveItineraryItemRecord, updateItineraryItemRecord } from '../lib/itinerary.js'
+import { HOME_CURRENCY, withConvertedAmount } from '../lib/currency.js'
+import { bookingItineraryDate, bookingItineraryPatch, itineraryItemForBooking } from '../lib/bookings.js'
+import { categoryToItinerary, itineraryItemForPlace, markPlaceVisited } from '../lib/places.js'
 import {
+  canDeleteBooking,
   canDeleteExpense,
+  canDeletePlace,
+  canEditBooking,
   canEditExpense,
+  canEditPlace,
   canOnTrip,
   getTripPermissions,
 } from '../lib/permissions.js'
+import {
+  createChecklistCategory as applyCreateChecklistCategory,
+  createChecklistItem as applyCreateChecklistItem,
+  createPackingCategory as applyCreatePackingCategory,
+  createPackingItem as applyCreatePackingItem,
+  deleteChecklistCategory as applyDeleteChecklistCategory,
+  deleteChecklistItem as applyDeleteChecklistItem,
+  deletePackingCategory as applyDeletePackingCategory,
+  deletePackingItem as applyDeletePackingItem,
+  personalRowsForUser,
+  removePersonalRowsForTrip,
+  reorderChecklistCategories as applyReorderChecklistCategories,
+  reorderChecklistItems as applyReorderChecklistItems,
+  reorderPackingCategories as applyReorderPackingCategories,
+  reorderPackingItems as applyReorderPackingItems,
+  seedDefaultChecklistCategories as applySeedDefaultChecklistCategories,
+  seedDefaultPackingCategories as applySeedDefaultPackingCategories,
+  toggleChecklistItemDone as applyToggleChecklistItemDone,
+  togglePackingItemPacked as applyTogglePackingItemPacked,
+  updateChecklistCategory as applyUpdateChecklistCategory,
+  updateChecklistItem as applyUpdateChecklistItem,
+  updatePackingCategory as applyUpdatePackingCategory,
+  updatePackingItem as applyUpdatePackingItem,
+  createNote as applyCreateNote,
+  updateNote as applyUpdateNote,
+  deleteNote as applyDeleteNote,
+  createMemory as applyCreateMemory,
+  updateMemory as applyUpdateMemory,
+  deleteMemory as applyDeleteMemory,
+} from '../lib/planning.js'
 
 const AppDataContext = createContext(null)
 const SESSION_KEY = 'travel-os-session-user'
@@ -70,17 +103,68 @@ function isTripVisible(trip, user, invitations) {
 }
 
 export function AppDataProvider({ children }) {
-  const [users] = useState(seedUsers)
-  const [trips, setTrips] = useState(seedTrips)
-  const [expenses, setExpenses] = useState(seedExpenses)
-  const [itineraries, setItineraries] = useState(seedItineraries)
-  const [places, setPlaces] = useState(seedPlaces)
-  const [invitations, setInvitations] = useState(seedInvitations)
-  const [activities, setActivities] = useState(seedActivities)
-  const [polls, setPolls] = useState(seedPolls)
+  const [boot] = useState(() => loadSnapshot(createSeedSnapshot()))
+  const [users, setUsers] = useState(() => boot.users)
+  const [trips, setTrips] = useState(() => boot.trips)
+  const [expenses, setExpenses] = useState(() => boot.expenses)
+  const [itineraries, setItineraries] = useState(() => boot.itineraries)
+  const [places, setPlaces] = useState(() => boot.places)
+  const [bookings, setBookings] = useState(() => boot.bookings)
+  const [invitations, setInvitations] = useState(() => boot.invitations)
+  const [activities, setActivities] = useState(() => boot.activities)
+  const [polls, setPolls] = useState(() => boot.polls)
+  const [pendingOps, setPendingOps] = useState(() => boot.pendingOps ?? [])
+  const [tripMigrations, setTripMigrations] = useState(() => boot.tripMigrations ?? [])
+  const [packingCategories, setPackingCategories] = useState(() => boot.packingCategories ?? [])
+  const [packingItems, setPackingItems] = useState(() => boot.packingItems ?? [])
+  const [checklistCategories, setChecklistCategories] = useState(() => boot.checklistCategories ?? [])
+  const [checklistItems, setChecklistItems] = useState(() => boot.checklistItems ?? [])
+  const [notes, setNotes] = useState(() => boot.notes ?? [])
+  const [memories, setMemories] = useState(() => boot.memories ?? [])
   const [sessionUserId, setSessionUserIdState] = useState(readSessionUserId)
 
-  const currentUser = getUserById(sessionUserId, users) ?? getUserById(CURRENT_USER_ID, users)
+  useEffect(() => {
+    saveSnapshot({
+      users,
+      trips,
+      expenses,
+      itineraries,
+      places,
+      bookings,
+      invitations,
+      activities,
+      polls,
+      pendingOps,
+      tripMigrations,
+      packingCategories,
+      packingItems,
+      checklistCategories,
+      checklistItems,
+      notes,
+      memories,
+    })
+  }, [
+    users,
+    trips,
+    expenses,
+    itineraries,
+    places,
+    bookings,
+    invitations,
+    activities,
+    polls,
+    pendingOps,
+    tripMigrations,
+    packingCategories,
+    packingItems,
+    checklistCategories,
+    checklistItems,
+    notes,
+    memories,
+  ])
+
+  const currentUser =
+    getUserById(sessionUserId, users) ?? getUserById(CURRENT_USER_ID, users) ?? users[0]
 
   const setSessionUserId = useCallback((userId) => {
     writeSessionUserId(userId)
@@ -115,9 +199,11 @@ export function AppDataProvider({ children }) {
       users,
       trips: visibleTrips,
       allTrips: trips,
+      allInvitations: invitations,
       expenses: expenses.filter((expense) => memberTripIds.has(expense.tripId)),
       itineraries: itineraries.filter((entry) => memberTripIds.has(entry.tripId)),
       places: places.filter((place) => memberTripIds.has(place.tripId)),
+      bookings: bookings.filter((booking) => memberTripIds.has(booking.tripId)),
       invitations: invitations.filter(
         (invitation) =>
           memberTripIds.has(invitation.tripId) ||
@@ -125,6 +211,44 @@ export function AppDataProvider({ children }) {
       ),
       activities: activities.filter((activity) => memberTripIds.has(activity.tripId)),
       polls: polls.filter((poll) => memberTripIds.has(poll.tripId)),
+      packingCategories: personalRowsForUser(packingCategories, currentUser.id),
+      packingItems: personalRowsForUser(packingItems, currentUser.id),
+      checklistCategories: personalRowsForUser(checklistCategories, currentUser.id),
+      checklistItems: personalRowsForUser(checklistItems, currentUser.id),
+      notes: personalRowsForUser(notes, currentUser.id),
+      memories: personalRowsForUser(memories, currentUser.id),
+      pendingOps,
+      tripMigrations,
+      ready: true,
+      upsertTripMigration: (next) => {
+        const sanitized = sanitizeTripMigration(next)
+        setTripMigrations((current) => {
+          const index = current.findIndex(
+            (item) => item.id === sanitized.id || item.localTripId === sanitized.localTripId,
+          )
+          if (index === -1) return [...current, sanitized]
+          const copy = [...current]
+          copy[index] = sanitized
+          return copy
+        })
+        return sanitized
+      },
+      enqueuePendingOp: (op) => {
+        const next = normalizePendingOp({
+          id: op?.id || createId('op'),
+          createdAt: nowIso(),
+          status: 'pending',
+          ...op,
+        })
+        setPendingOps((current) => {
+          if (current.some((item) => item.id === next.id)) return current
+          return [...current, next]
+        })
+        return next
+      },
+      replacePendingOps: (updater) => {
+        setPendingOps((current) => (typeof updater === 'function' ? updater(current) : updater))
+      },
       permissionsFor: (trip) => getTripPermissions(trip, currentUser.id),
       addTrip: (trip) => {
         const id = trip.id ?? createId('trip')
@@ -182,9 +306,9 @@ export function AppDataProvider({ children }) {
       },
       deleteExpense: (expenseId) => {
         const current = expenses.find((item) => item.id === expenseId)
-        if (!current) return false
+        if (!current) return null
         const trip = tripById(current.tripId)
-        if (!canDeleteExpense(trip, currentUser.id, current)) return false
+        if (!canDeleteExpense(trip, currentUser.id, current)) return null
         setExpenses((list) => list.filter((item) => item.id !== expenseId))
         recordActivity({
           tripId: current.tripId,
@@ -192,7 +316,15 @@ export function AppDataProvider({ children }) {
           type: 'expense.delete',
           meta: { title: current.description },
         })
-        return true
+        return current
+      },
+      restoreExpense: (expense) => {
+        if (!expense?.id) return null
+        setExpenses((list) => {
+          if (list.some((item) => item.id === expense.id)) return list
+          return [expense, ...list]
+        })
+        return expense
       },
       addItineraryItem: (tripId, date, item) => {
         const trip = tripById(tripId)
@@ -239,10 +371,33 @@ export function AppDataProvider({ children }) {
         })
         return nextItem
       },
+      updateItineraryItem: (tripId, itemId, patch) => {
+        const trip = tripById(tripId)
+        if (!canOnTrip(trip, currentUser.id, 'editItinerary')) return null
+        const stamp = nowIso()
+        const result = updateItineraryItemRecord(itineraries, tripId, itemId, patch, currentUser.id, stamp)
+        if (!result.item) return null
+        setItineraries(result.itineraries)
+        recordActivity({
+          tripId,
+          actorId: currentUser.id,
+          type: 'itinerary.update',
+          meta: { title: result.item.title },
+        })
+        return result.item
+      },
       addPlace: (place) => {
         const trip = tripById(place.tripId)
         if (!canOnTrip(trip, currentUser.id, 'addPlace')) return null
-        const next = { id: createId('place'), ...place }
+        const stamp = nowIso()
+        const next = {
+          status: place.plannedDay ? 'planned' : 'saved',
+          currency: trip?.currency,
+          ...place,
+          id: place.id ?? createId('place'),
+          createdBy: currentUser.id,
+          createdAt: stamp,
+        }
         setPlaces((current) => [next, ...current])
         recordActivity({
           tripId: next.tripId,
@@ -252,19 +407,299 @@ export function AppDataProvider({ children }) {
         })
         return next
       },
+      updatePlace: (placeId, patch) => {
+        const current = places.find((item) => item.id === placeId)
+        if (!current) return null
+        const trip = tripById(current.tripId)
+        if (!canEditPlace(trip, currentUser.id, current)) return null
+        const updated = {
+          ...current,
+          ...patch,
+          id: current.id,
+          tripId: current.tripId,
+          createdBy: current.createdBy,
+          createdAt: current.createdAt,
+          updatedAt: nowIso(),
+        }
+        setPlaces((list) => list.map((item) => (item.id === placeId ? updated : item)))
+        recordActivity({
+          tripId: updated.tripId,
+          actorId: currentUser.id,
+          type: 'place.update',
+          meta: { title: updated.name },
+        })
+        return updated
+      },
+      deletePlace: (placeId) => {
+        const current = places.find((item) => item.id === placeId)
+        if (!current) return false
+        const trip = tripById(current.tripId)
+        if (!canDeletePlace(trip, currentUser.id, current)) return false
+        setPlaces((list) => list.filter((item) => item.id !== placeId))
+        setItineraries((list) => clearItineraryRefs(list, current.tripId, { placeId }))
+        recordActivity({
+          tripId: current.tripId,
+          actorId: currentUser.id,
+          type: 'place.delete',
+          meta: { title: current.name },
+        })
+        return true
+      },
+      markPlaceVisited: (placeId) => {
+        const current = places.find((item) => item.id === placeId)
+        if (!current) return null
+        const trip = tripById(current.tripId)
+        if (!canEditPlace(trip, currentUser.id, current)) return null
+        const updated = { ...markPlaceVisited(current), updatedAt: nowIso() }
+        setPlaces((list) => list.map((item) => (item.id === placeId ? updated : item)))
+        recordActivity({
+          tripId: updated.tripId,
+          actorId: currentUser.id,
+          type: 'place.update',
+          meta: { title: updated.name },
+        })
+        return updated
+      },
+      addPlaceToItinerary: (placeId, date, time = '') => {
+        const place = places.find((item) => item.id === placeId)
+        if (!place || !date) return null
+        const trip = tripById(place.tripId)
+        if (!canOnTrip(trip, currentUser.id, 'editItinerary')) return null
+        const itinerary = itineraries.find((entry) => entry.tripId === place.tripId)
+        const existing = itineraryItemForPlace(itinerary, placeId)
+        if (existing) {
+          const stamp = nowIso()
+          const moved = moveItineraryItemRecord(itineraries, place.tripId, existing.item.id, date)
+          if (!moved.item) return null
+          let nextItem = moved.item
+          if (time) {
+            const patched = updateItineraryItemRecord(
+              moved.itineraries,
+              place.tripId,
+              existing.item.id,
+              { time },
+              currentUser.id,
+              stamp,
+            )
+            setItineraries(patched.itineraries)
+            nextItem = patched.item
+          } else {
+            setItineraries(moved.itineraries)
+          }
+          const nextStatus = place.status === 'visited' ? 'visited' : 'planned'
+          setPlaces((list) =>
+            list.map((item) =>
+              item.id === placeId ? { ...item, plannedDay: date, status: nextStatus, updatedAt: stamp } : item,
+            ),
+          )
+          return nextItem
+        }
+        const stamp = nowIso()
+        const nextItem = {
+          id: createId('item'),
+          time: time || '',
+          category: categoryToItinerary(place.category),
+          title: place.name,
+          placeId: place.id,
+          createdBy: currentUser.id,
+          createdAt: stamp,
+        }
+        setItineraries((current) => {
+          const existingEntry = current.find((entry) => entry.tripId === place.tripId)
+          if (!existingEntry) {
+            return [
+              ...current,
+              { tripId: place.tripId, days: [{ date, dayNumber: 1, title: '', items: [nextItem] }] },
+            ]
+          }
+          return current.map((entry) => {
+            if (entry.tripId !== place.tripId) return entry
+            const hasDay = entry.days.some((day) => day.date === date)
+            const days = hasDay
+              ? entry.days.map((day) =>
+                  day.date === date ? { ...day, items: [...day.items, nextItem] } : day,
+                )
+              : [...entry.days, { date, dayNumber: entry.days.length + 1, title: '', items: [nextItem] }]
+            return { ...entry, days }
+          })
+        })
+        const nextStatus = place.status === 'visited' ? 'visited' : 'planned'
+        setPlaces((list) =>
+          list.map((item) =>
+            item.id === placeId ? { ...item, plannedDay: date, status: nextStatus, updatedAt: stamp } : item,
+          ),
+        )
+        recordActivity({
+          tripId: place.tripId,
+          actorId: currentUser.id,
+          type: 'itinerary.add',
+          meta: { title: nextItem.title },
+        })
+        return nextItem
+      },
+      movePlaceToDay: (placeId, date) => {
+        const place = places.find((item) => item.id === placeId)
+        if (!place || !date) return null
+        const trip = tripById(place.tripId)
+        if (!canOnTrip(trip, currentUser.id, 'editItinerary')) return null
+        const itinerary = itineraries.find((entry) => entry.tripId === place.tripId)
+        const existing = itineraryItemForPlace(itinerary, placeId)
+        if (!existing) {
+          return null
+        }
+        const moved = moveItineraryItemRecord(itineraries, place.tripId, existing.item.id, date)
+        if (!moved.item) return null
+        setItineraries(moved.itineraries)
+        const nextStatus = place.status === 'visited' ? 'visited' : 'planned'
+        setPlaces((list) =>
+          list.map((item) =>
+            item.id === placeId ? { ...item, plannedDay: date, status: nextStatus, updatedAt: nowIso() } : item,
+          ),
+        )
+        recordActivity({
+          tripId: place.tripId,
+          actorId: currentUser.id,
+          type: 'itinerary.update',
+          meta: { title: place.name },
+        })
+        return moved.item
+      },
+      addBooking: (booking) => {
+        const trip = tripById(booking.tripId)
+        if (!canOnTrip(trip, currentUser.id, 'addBooking')) return null
+        const stamp = nowIso()
+        const next = {
+          type: 'other',
+          status: 'confirmed',
+          currency: trip?.currency,
+          documents: [],
+          ...booking,
+          id: booking.id ?? createId('book'),
+          createdBy: currentUser.id,
+          createdAt: stamp,
+        }
+        setBookings((current) => [next, ...current])
+        recordActivity({
+          tripId: next.tripId,
+          actorId: currentUser.id,
+          type: 'booking.add',
+          meta: { title: next.title },
+        })
+        return next
+      },
+      updateBooking: (bookingId, patch) => {
+        const current = bookings.find((item) => item.id === bookingId)
+        if (!current) return null
+        const trip = tripById(current.tripId)
+        if (!canEditBooking(trip, currentUser.id, current)) return null
+        const updated = {
+          ...current,
+          ...patch,
+          id: current.id,
+          tripId: current.tripId,
+          createdBy: current.createdBy,
+          createdAt: current.createdAt,
+          updatedAt: nowIso(),
+        }
+        setBookings((list) => list.map((item) => (item.id === bookingId ? updated : item)))
+        recordActivity({
+          tripId: updated.tripId,
+          actorId: currentUser.id,
+          type: 'booking.update',
+          meta: { title: updated.title },
+        })
+        return updated
+      },
+      deleteBooking: (bookingId) => {
+        const current = bookings.find((item) => item.id === bookingId)
+        if (!current) return false
+        const trip = tripById(current.tripId)
+        if (!canDeleteBooking(trip, currentUser.id, current)) return false
+        setBookings((list) => list.filter((item) => item.id !== bookingId))
+        setItineraries((list) => clearItineraryRefs(list, current.tripId, { bookingId }))
+        recordActivity({
+          tripId: current.tripId,
+          actorId: currentUser.id,
+          type: 'booking.delete',
+          meta: { title: current.title },
+        })
+        return true
+      },
+      addBookingToItinerary: (bookingId, date, time) => {
+        const booking = bookings.find((item) => item.id === bookingId)
+        if (!booking) return null
+        const trip = tripById(booking.tripId)
+        if (!canOnTrip(trip, currentUser.id, 'editItinerary')) return null
+        const day = date || bookingItineraryDate(booking, trip)
+        if (!day) return null
+        const itinerary = itineraries.find((entry) => entry.tripId === booking.tripId)
+        const existing = itineraryItemForBooking(itinerary, bookingId)
+        const patch = bookingItineraryPatch(booking)
+        if (time) patch.time = time
+        if (existing) {
+          const moved = moveItineraryItemRecord(itineraries, booking.tripId, existing.item.id, day)
+          if (!moved.item) return null
+          const result = updateItineraryItemRecord(
+            moved.itineraries,
+            booking.tripId,
+            existing.item.id,
+            patch,
+            currentUser.id,
+            nowIso(),
+          )
+          setItineraries(result.itineraries)
+          return result.item
+        }
+        const stamp = nowIso()
+        const nextItem = {
+          id: createId('item'),
+          ...patch,
+          createdBy: currentUser.id,
+          createdAt: stamp,
+        }
+        setItineraries((current) => {
+          const existingEntry = current.find((entry) => entry.tripId === booking.tripId)
+          if (!existingEntry) {
+            return [
+              ...current,
+              { tripId: booking.tripId, days: [{ date: day, dayNumber: 1, title: '', items: [nextItem] }] },
+            ]
+          }
+          return current.map((entry) => {
+            if (entry.tripId !== booking.tripId) return entry
+            const hasDay = entry.days.some((entryDay) => entryDay.date === day)
+            const days = hasDay
+              ? entry.days.map((entryDay) =>
+                  entryDay.date === day ? { ...entryDay, items: [...entryDay.items, nextItem] } : entryDay,
+                )
+              : [...entry.days, { date: day, dayNumber: entry.days.length + 1, title: '', items: [nextItem] }]
+            return { ...entry, days }
+          })
+        })
+        recordActivity({
+          tripId: booking.tripId,
+          actorId: currentUser.id,
+          type: 'itinerary.add',
+          meta: { title: nextItem.title },
+        })
+        return nextItem
+      },
       inviteMember: (tripId, { email, role, status = 'pending' }) => {
         const trip = tripById(tripId)
         if (!trip) return { ok: false, reason: 'Trip not found.' }
+        const ensured = ensureUserForInvite(users, email)
         const result = upsertInvitation({
           trip,
-          users,
+          users: ensured.users,
           invitations,
           actorId: currentUser.id,
           email,
           role,
           status,
+          name: ensured.user.name,
         })
         if (!result.ok) return result
+        if (ensured.created) setUsers(ensured.users)
         setInvitations(result.invitations)
         setTrips((current) =>
           current.map((item) =>
@@ -282,7 +717,7 @@ export function AppDataProvider({ children }) {
         return {
           ok: true,
           invitation: result.invitation,
-          link: inviteLink(trip, result.invitation),
+          link: liveInviteLink(trip, result.invitation),
         }
       },
       withdrawInvitation: (invitationId) => {
@@ -312,6 +747,29 @@ export function AppDataProvider({ children }) {
         recordActivity({
           tripId: trip.id,
           actorId: currentUser.id,
+          type: 'member.join',
+          meta: { name: result.joinedUser.shortName || result.joinedUser.name },
+        })
+        return result
+      },
+      joinByToken: (inviteCode, inviteToken) => {
+        const found = findJoinTarget(trips, invitations, inviteCode, inviteToken)
+        if (!found.ok) return found
+        const result = acceptInvitationAsInvitee({
+          trip: found.trip,
+          invitation: found.invitation,
+          users,
+        })
+        if (!result.ok) return result
+        setUsers(result.users)
+        setTrips((current) => current.map((item) => (item.id === found.trip.id ? result.trip : item)))
+        setInvitations((current) =>
+          current.map((item) => (item.id === found.invitation.id ? result.invitation : item)),
+        )
+        setSessionUserId(result.joinedUser.id)
+        recordActivity({
+          tripId: found.trip.id,
+          actorId: result.joinedUser.id,
           type: 'member.join',
           meta: { name: result.joinedUser.shortName || result.joinedUser.name },
         })
@@ -354,6 +812,224 @@ export function AppDataProvider({ children }) {
         setInvitations((current) => current.filter((item) => item.tripId !== tripId))
         setActivities((current) => current.filter((item) => item.tripId !== tripId))
         setPolls((current) => current.filter((item) => item.tripId !== tripId))
+        setExpenses((current) => current.filter((item) => item.tripId !== tripId))
+        setItineraries((current) => current.filter((item) => item.tripId !== tripId))
+        setPlaces((current) => current.filter((item) => item.tripId !== tripId))
+        setBookings((current) => current.filter((item) => item.tripId !== tripId))
+        setPackingCategories((current) => removePersonalRowsForTrip(current, tripId))
+        setPackingItems((current) => removePersonalRowsForTrip(current, tripId))
+        setChecklistCategories((current) => removePersonalRowsForTrip(current, tripId))
+        setChecklistItems((current) => removePersonalRowsForTrip(current, tripId))
+        setNotes((current) => removePersonalRowsForTrip(current, tripId))
+        setMemories((current) => removePersonalRowsForTrip(current, tripId))
+        return true
+      },
+      ensurePackingCategories: (tripId) => {
+        if (!tripById(tripId)) return false
+        const result = applySeedDefaultPackingCategories(packingCategories, tripId, currentUser.id, { now: nowIso() })
+        if (!result.seeded) return false
+        setPackingCategories(result.categories)
+        return true
+      },
+      addPackingCategory: ({ tripId, name } = {}) => {
+        if (!tripById(tripId)) return null
+        const result = applyCreatePackingCategory(
+          packingCategories,
+          { tripId, userId: currentUser.id, name },
+          { now: nowIso() },
+        )
+        if (!result.category) return null
+        setPackingCategories(result.categories)
+        return result.category
+      },
+      updatePackingCategory: (categoryId, patch) => {
+        const result = applyUpdatePackingCategory(packingCategories, categoryId, currentUser.id, patch, nowIso())
+        if (!result.category) return null
+        setPackingCategories(result.categories)
+        return result.category
+      },
+      reorderPackingCategories: (tripId, orderedIds) => {
+        const result = applyReorderPackingCategories(packingCategories, tripId, currentUser.id, orderedIds, nowIso())
+        if (!result.ok) return false
+        setPackingCategories(result.categories)
+        return true
+      },
+      deletePackingCategory: (categoryId) => {
+        const result = applyDeletePackingCategory(packingCategories, packingItems, categoryId, currentUser.id)
+        if (!result.ok) return false
+        setPackingCategories(result.categories)
+        setPackingItems(result.items)
+        return true
+      },
+      addPackingItem: (input = {}) => {
+        if (!tripById(input.tripId)) return null
+        const result = applyCreatePackingItem(
+          packingItems,
+          packingCategories,
+          { ...input, userId: currentUser.id },
+          { now: nowIso() },
+        )
+        if (!result.item) return null
+        setPackingItems(result.items)
+        return result.item
+      },
+      updatePackingItem: (itemId, patch) => {
+        const result = applyUpdatePackingItem(packingItems, packingCategories, itemId, currentUser.id, patch, nowIso())
+        if (!result.item) return null
+        setPackingItems(result.items)
+        return result.item
+      },
+      togglePackingItemPacked: (itemId) => {
+        const result = applyTogglePackingItemPacked(packingItems, itemId, currentUser.id, nowIso())
+        if (!result.item) return null
+        setPackingItems(result.items)
+        return result.item
+      },
+      reorderPackingItems: (categoryId, orderedIds) => {
+        const result = applyReorderPackingItems(packingItems, categoryId, currentUser.id, orderedIds, nowIso())
+        if (!result.ok) return false
+        setPackingItems(result.items)
+        return true
+      },
+      deletePackingItem: (itemId) => {
+        const result = applyDeletePackingItem(packingItems, itemId, currentUser.id)
+        if (!result.ok) return false
+        setPackingItems(result.items)
+        return true
+      },
+      ensureChecklistCategories: (tripId) => {
+        if (!tripById(tripId)) return false
+        const result = applySeedDefaultChecklistCategories(
+          checklistCategories,
+          tripId,
+          currentUser.id,
+          { now: nowIso() },
+        )
+        if (!result.seeded) return false
+        setChecklistCategories(result.categories)
+        return true
+      },
+      addChecklistCategory: ({ tripId, phase, name } = {}) => {
+        if (!tripById(tripId)) return null
+        const result = applyCreateChecklistCategory(
+          checklistCategories,
+          { tripId, userId: currentUser.id, phase, name },
+          { now: nowIso() },
+        )
+        if (!result.category) return null
+        setChecklistCategories(result.categories)
+        return result.category
+      },
+      updateChecklistCategory: (categoryId, patch) => {
+        const result = applyUpdateChecklistCategory(checklistCategories, categoryId, currentUser.id, patch, nowIso())
+        if (!result.category) return null
+        setChecklistCategories(result.categories)
+        return result.category
+      },
+      reorderChecklistCategories: (tripId, phase, orderedIds) => {
+        const result = applyReorderChecklistCategories(
+          checklistCategories,
+          tripId,
+          currentUser.id,
+          phase,
+          orderedIds,
+          nowIso(),
+        )
+        if (!result.ok) return false
+        setChecklistCategories(result.categories)
+        return true
+      },
+      deleteChecklistCategory: (categoryId) => {
+        const result = applyDeleteChecklistCategory(
+          checklistCategories,
+          checklistItems,
+          categoryId,
+          currentUser.id,
+        )
+        if (!result.ok) return false
+        setChecklistCategories(result.categories)
+        setChecklistItems(result.items)
+        return true
+      },
+      addChecklistItem: (input = {}) => {
+        if (!tripById(input.tripId)) return null
+        const result = applyCreateChecklistItem(
+          checklistItems,
+          checklistCategories,
+          { ...input, userId: currentUser.id },
+          { now: nowIso() },
+        )
+        if (!result.item) return null
+        setChecklistItems(result.items)
+        return result.item
+      },
+      updateChecklistItem: (itemId, patch) => {
+        const result = applyUpdateChecklistItem(
+          checklistItems,
+          checklistCategories,
+          itemId,
+          currentUser.id,
+          patch,
+          nowIso(),
+        )
+        if (!result.item) return null
+        setChecklistItems(result.items)
+        return result.item
+      },
+      toggleChecklistItemDone: (itemId) => {
+        const result = applyToggleChecklistItemDone(checklistItems, itemId, currentUser.id, nowIso())
+        if (!result.item) return null
+        setChecklistItems(result.items)
+        return result.item
+      },
+      reorderChecklistItems: (categoryId, orderedIds) => {
+        const result = applyReorderChecklistItems(checklistItems, categoryId, currentUser.id, orderedIds, nowIso())
+        if (!result.ok) return false
+        setChecklistItems(result.items)
+        return true
+      },
+      deleteChecklistItem: (itemId) => {
+        const result = applyDeleteChecklistItem(checklistItems, itemId, currentUser.id)
+        if (!result.ok) return false
+        setChecklistItems(result.items)
+        return true
+      },
+      addNote: (input = {}) => {
+        if (!tripById(input.tripId)) return null
+        const result = applyCreateNote(notes, { ...input, userId: currentUser.id }, { now: nowIso() })
+        if (!result.note) return null
+        setNotes(result.notes)
+        return result.note
+      },
+      updateNote: (noteId, patch) => {
+        const result = applyUpdateNote(notes, noteId, currentUser.id, patch, nowIso())
+        if (!result.note) return null
+        setNotes(result.notes)
+        return result.note
+      },
+      deleteNote: (noteId) => {
+        const result = applyDeleteNote(notes, noteId, currentUser.id)
+        if (!result.ok) return false
+        setNotes(result.notes)
+        return true
+      },
+      addMemory: (input = {}) => {
+        if (!tripById(input.tripId)) return null
+        const result = applyCreateMemory(memories, { ...input, userId: currentUser.id }, { now: nowIso() })
+        if (!result.memory) return null
+        setMemories(result.memories)
+        return result.memory
+      },
+      updateMemory: (memoryId, patch) => {
+        const result = applyUpdateMemory(memories, memoryId, currentUser.id, patch, nowIso())
+        if (!result.memory) return null
+        setMemories(result.memories)
+        return result.memory
+      },
+      deleteMemory: (memoryId) => {
+        const result = applyDeleteMemory(memories, memoryId, currentUser.id)
+        if (!result.ok) return false
+        setMemories(result.memories)
         return true
       },
       votePoll: (pollId, optionId) => {
@@ -369,12 +1045,21 @@ export function AppDataProvider({ children }) {
     }
   }, [
     activities,
+    bookings,
+    checklistCategories,
+    checklistItems,
     currentUser,
     expenses,
     invitations,
     itineraries,
+    packingCategories,
+    packingItems,
+    pendingOps,
     places,
     polls,
+    notes,
+    memories,
+    tripMigrations,
     recordActivity,
     setSessionUserId,
     trips,

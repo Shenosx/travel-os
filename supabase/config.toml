@@ -1,0 +1,22 @@
+# Travel OS backend foundation.
+# This project is not connected to the React app yet.
+
+project_id = "travel-os"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[db.migrations]
+schema_paths = []
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"

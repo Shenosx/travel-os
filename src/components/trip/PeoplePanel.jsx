@@ -1,6 +1,7 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { displayName } from '../../data/mock.js'
-import { inviteLink, openInvitationsForTrip } from '../../lib/collaboration.js'
+import { liveInviteLink, openInvitationsForTrip } from '../../lib/collaboration.js'
 import { canChangeMemberRole, canRemoveMember } from '../../lib/permissions.js'
 import { ROLE_LABEL } from '../../lib/people.js'
 import { CURRENT_USER_ID } from '../../data/mock.js'
@@ -34,10 +35,12 @@ export function PeoplePanel({ trip, members, currentUserId }) {
     withdrawInvitation,
     updateMemberRole,
     removeMember,
+    deleteTrip,
     setSessionUserId,
     isPreviewing,
     homeUserId,
   } = useAppData()
+  const navigate = useNavigate()
   const permissions = permissionsFor(trip)
   const pending = openInvitationsForTrip(invitations, trip.id)
   const tripActivities = activities
@@ -47,6 +50,7 @@ export function PeoplePanel({ trip, members, currentUserId }) {
 
   const [inviteOpen, setInviteOpen] = useState(false)
   const [removingId, setRemovingId] = useState(null)
+  const [confirmDeleteTrip, setConfirmDeleteTrip] = useState(false)
 
   const previewPeople = previewCast(trip, members, pending, users)
 
@@ -77,7 +81,7 @@ export function PeoplePanel({ trip, members, currentUserId }) {
               return (
                 <li
                   key={member.userId}
-                  className={`py-4 first:pt-0 last:pb-0 ${isOwner ? 'sm:px-3 sm:-mx-3 sm:rounded-lg sm:bg-accent-soft/40' : ''}`}
+                  className={`py-4 first:pt-0 last:pb-0 ${isOwner ? '-mx-1 rounded-lg bg-accent-soft/45 px-3 sm:-mx-3' : ''}`}
                 >
                   <div className="flex items-start gap-3">
                     <Avatar initials={member.user.initials} emphasis={isOwner} />
@@ -155,6 +159,19 @@ export function PeoplePanel({ trip, members, currentUserId }) {
               )
             })}
           </ul>
+          {members.length === 1 && !pending.length ? (
+            <div className="mt-6 border-t border-line pt-6 text-center">
+              <p className="text-sm text-ink-muted">No one else on this trip yet</p>
+              <p className="mt-1 text-[13px] text-ink-subtle">
+                Invite someone to share the days, places, and spending.
+              </p>
+              {permissions.canInvite ? (
+                <button type="button" className="mt-4 text-sm text-accent" onClick={() => setInviteOpen(true)}>
+                  Invite people
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </Card>
 
         {pending.length ? (
@@ -175,6 +192,39 @@ export function PeoplePanel({ trip, members, currentUserId }) {
         ) : null}
 
         <ActivityFeed activities={tripActivities} users={users} currentUserId={currentUserId} />
+
+        {permissions.canDeleteTrip ? (
+          <div className="px-1">
+            {confirmDeleteTrip ? (
+              <div className="flex flex-wrap items-center gap-4">
+                <button
+                  type="button"
+                  className="text-[13px] text-accent"
+                  onClick={() => {
+                    if (deleteTrip(trip.id)) navigate('/trips')
+                  }}
+                >
+                  Remove {trip.city} from your trips?
+                </button>
+                <button
+                  type="button"
+                  className="text-[13px] text-ink-subtle"
+                  onClick={() => setConfirmDeleteTrip(false)}
+                >
+                  Keep
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="text-[13px] text-ink-subtle hover:text-ink"
+                onClick={() => setConfirmDeleteTrip(true)}
+              >
+                Delete this trip
+              </button>
+            )}
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-6">
@@ -230,7 +280,7 @@ export function PeoplePanel({ trip, members, currentUserId }) {
 function PendingInviteRow({ invitation, trip, canManage, onWithdraw }) {
   const [copied, setCopied] = useState(false)
   const [confirm, setConfirm] = useState(false)
-  const link = inviteLink(trip, invitation)
+  const link = liveInviteLink(trip, invitation)
 
   async function copy() {
     try {

@@ -4,6 +4,7 @@ import { useAppData } from '../../hooks/useAppData.jsx'
 import { canDeleteExpense, canEditExpense, canOnTrip } from '../../lib/permissions.js'
 import { getNextTrip } from '../../lib/trips.js'
 import { Sheet } from '../ui/Sheet.jsx'
+import { useToast } from '../ui/Toast.jsx'
 import { ExpenseForm } from './ExpenseForm.jsx'
 
 const ExpenseComposerContext = createContext(null)
@@ -13,7 +14,7 @@ export function ExpenseComposerProvider({ children }) {
 
   const value = useMemo(
     () => ({
-      openCreate: (tripId) => setSession({ type: 'create', tripId: tripId ?? null }),
+      openCreate: (tripId, draft) => setSession({ type: 'create', tripId: tripId ?? null, draft: draft ?? null }),
       openEdit: (expenseId) => setSession({ type: 'edit', expenseId }),
       close: () => setSession(null),
       session,
@@ -44,7 +45,16 @@ function ExpenseComposerSheet() {
   const navigate = useNavigate()
   const location = useLocation()
   const { session, close } = useExpenseComposer()
-  const { trips, users, currentUser, expenses, addExpense, updateExpense, deleteExpense } = useAppData()
+  const showToast = useToast()
+  const formIdentity = session?.type === 'edit' ? `edit-${session.expenseId}` : `create-${session?.tripId ?? 'new'}`
+  const [dirty, setDirty] = useState(false)
+  const [dirtyFor, setDirtyFor] = useState(formIdentity)
+  if (dirtyFor !== formIdentity) {
+    setDirtyFor(formIdentity)
+    setDirty(false)
+  }
+  const { trips, users, currentUser, expenses, addExpense, updateExpense, deleteExpense, restoreExpense } =
+    useAppData()
 
   const expense = session?.type === 'edit' ? expenses.find((item) => item.id === session.expenseId) : null
   const contextTripId = tripIdFromPath(location.pathname)
@@ -62,15 +72,6 @@ function ExpenseComposerSheet() {
   const expenseTrip = expense ? trips.find((trip) => trip.id === expense.tripId) : null
   const mayEdit = expense ? canEditExpense(expenseTrip, currentUser.id, expense) : true
   const mayDelete = expense ? canDeleteExpense(expenseTrip, currentUser.id, expense) : false
-
-  useEffect(() => {
-    if (!session) return undefined
-    const onKey = (event) => {
-      if (event.key === 'Escape') close()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [session, close])
 
   useEffect(() => {
     if (session?.type === 'edit' && !expense) close()
@@ -108,6 +109,7 @@ function ExpenseComposerSheet() {
       kicker={session.type === 'edit' ? 'Expense' : 'Quick add'}
       title={session.type === 'edit' ? 'Edit expense' : 'Add expense'}
       onClose={close}
+      dirty={dirty}
       wide
     >
       <ExpenseForm
@@ -116,14 +118,22 @@ function ExpenseComposerSheet() {
         users={users}
         currentUser={currentUser}
         expense={expense}
+        draft={session?.draft}
         defaultTripId={defaultTripId}
         lockTrip={Boolean(contextTripId && session.type === 'create')}
-        onCancel={close}
+        onDirtyChange={() => setDirty(true)}
         onDelete={
           mayDelete
             ? () => {
-                deleteExpense(expense.id)
+                const removed = deleteExpense(expense.id)
                 close()
+                if (removed) {
+                  showToast({
+                    message: 'Expense deleted',
+                    actionLabel: 'Undo',
+                    onAction: () => restoreExpense(removed),
+                  })
+                }
               }
             : undefined
         }

@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { formatDateRange } from '../../lib/dates.js'
 import { formatMoney, spendingPercent } from '../../lib/format.js'
-import { getTripDurationDays, getTripStatus, STATUS_LABEL } from '../../lib/trips.js'
+import { describeTripCountdown, getTripDurationDays, getTripStatus, STATUS_LABEL } from '../../lib/trips.js'
 import { Badge } from '../ui/Badge.jsx'
 import { Card } from '../ui/Card.jsx'
 import { ProgressBar } from '../ui/ProgressBar.jsx'
@@ -15,8 +15,9 @@ export function TripStatusBadge({ trip }) {
   )
 }
 
-export function TripCard({ trip, spent }) {
+export function TripCard({ trip, spent, invited = false }) {
   const duration = getTripDurationDays(trip)
+  const countdown = describeTripCountdown(trip)
   const percent = spendingPercent(spent, trip.budgetAmount)
 
   return (
@@ -34,9 +35,14 @@ export function TripCard({ trip, spent }) {
             {formatDateRange(trip.startDate, trip.endDate)}
             <span className="text-ink-subtle"> · {duration} days</span>
           </p>
+          {countdown.status === 'upcoming' ? (
+            <p className="mt-1 text-[13px] text-ink-subtle">
+              {countdown.value} {countdown.value === 1 ? 'day' : 'days'}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          <TripStatusBadge trip={trip} />
+          {invited ? <Badge tone="accent">Invited</Badge> : <TripStatusBadge trip={trip} />}
           <Badge tone="muted">{trip.visibility === 'shared' ? 'Shared' : 'Private'}</Badge>
         </div>
       </div>

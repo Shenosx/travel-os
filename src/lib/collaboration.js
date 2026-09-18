@@ -19,9 +19,54 @@ export function createInviteToken() {
 /**
  * @param {import('../types').Trip} trip
  * @param {Pick<import('../types').Invitation, 'inviteToken'>} invitation
+ * @param {string} [origin]
  */
-export function inviteLink(trip, invitation) {
-  return `https://travelos.app/join/${trip.inviteCode}/${invitation.inviteToken}`
+export function inviteLink(trip, invitation, origin = 'https://travelos.app') {
+  return `${String(origin).replace(/\/$/, '')}/join/${trip.inviteCode}/${invitation.inviteToken}`
+}
+
+/**
+ * Uses the current origin in the browser so copied links actually open this app.
+ *
+ * @param {import('../types').Trip} trip
+ * @param {Pick<import('../types').Invitation, 'inviteToken'>} invitation
+ */
+export function liveInviteLink(trip, invitation) {
+  const origin =
+    typeof window !== 'undefined' && window.location?.origin
+      ? window.location.origin
+      : 'https://travelos.app'
+  return inviteLink(trip, invitation, origin)
+}
+
+/**
+ * @param {import('../types').User[]} users
+ * @param {string} email
+ * @param {string} [name]
+ */
+export function ensureUserForInvite(users, email, name) {
+  const normalized = normalizeEmail(email)
+  const existing = users.find((user) => user.email.toLowerCase() === normalized)
+  if (existing) return { users, user: existing, created: false }
+  const profile = userFromInvite(normalized, name)
+  const user = { id: createId('user'), ...profile }
+  return { users: [...users, user], user, created: true }
+}
+
+/**
+ * @param {import('../types').Trip[]} trips
+ * @param {import('../types').Invitation[]} invitations
+ * @param {string} inviteCode
+ * @param {string} token
+ */
+export function findJoinTarget(trips, invitations, inviteCode, token) {
+  const trip = trips.find((item) => item.inviteCode === inviteCode)
+  if (!trip) return { ok: false, reason: 'This invite link is no longer valid.' }
+  const invitation = invitations.find(
+    (item) => item.tripId === trip.id && item.inviteToken === token,
+  )
+  if (!invitation) return { ok: false, reason: 'This invite link is no longer valid.' }
+  return { ok: true, trip, invitation }
 }
 
 /** @param {import('../types').Invitation} invitation */
@@ -158,6 +203,31 @@ export function acceptInvitation(input) {
     joinedUser: actor,
     now: input.now ?? new Date().toISOString(),
   }
+}
+
+/**
+ * Join via invite link. Creates a local user for the invited email when needed.
+ *
+ * @param {{
+ *   trip: import('../types').Trip
+ *   invitation: import('../types').Invitation
+ *   users: import('../types').User[]
+ *   now?: string
+ * }} input
+ */
+export function acceptInvitationAsInvitee(input) {
+  const { trip, invitation } = input
+  if (!isOpenInvitation(invitation) || invitation.tripId !== trip.id) {
+    return { ok: false, reason: 'This invitation is no longer open.' }
+  }
+  const ensured = ensureUserForInvite(input.users, invitation.email, invitation.name)
+  return acceptInvitation({
+    trip,
+    invitation,
+    users: ensured.users,
+    actorId: ensured.user.id,
+    now: input.now,
+  })
 }
 
 /**

@@ -1,14 +1,15 @@
 import { Link } from 'react-router-dom'
+import { BOOKING_TYPE_LABEL, formatBookingWhen } from '../../lib/bookings.js'
 import { formatDateRange } from '../../lib/dates.js'
-import { formatMoney, spendingPercent } from '../../lib/format.js'
-import { getCountdown, getTripDurationDays, STATUS_LABEL, getTripStatus } from '../../lib/trips.js'
+import { formatMoney, formatTime, spendingPercent } from '../../lib/format.js'
+import { describeTripCountdown, getTripDurationDays, STATUS_LABEL } from '../../lib/trips.js'
 import { Badge } from '../ui/Badge.jsx'
 import { Card } from '../ui/Card.jsx'
 import { ProgressBar } from '../ui/ProgressBar.jsx'
 
-export function UpcomingHero({ trip, spent }) {
-  const status = getTripStatus(trip)
-  const countdown = getCountdown(trip)
+export function UpcomingHero({ trip, spent, nextItem, nextBooking }) {
+  const countdown = describeTripCountdown(trip)
+  const status = countdown.status
   const duration = getTripDurationDays(trip)
   const percent = spendingPercent(spent, trip.budgetAmount)
   const remaining = trip.budgetAmount - spent
@@ -62,14 +63,42 @@ export function UpcomingHero({ trip, spent }) {
             </p>
             {status === 'upcoming' ? (
               <p className="font-display mt-3 text-[64px] leading-none tracking-[-0.05em] text-ink">
-                {countdown}
+                {countdown.value}
                 <span className="ml-2 font-sans text-base tracking-normal text-ink-muted">
-                  {countdown === 1 ? 'day' : 'days'}
+                  {countdown.value === 1 ? 'day to go' : 'days to go'}
                 </span>
               </p>
             ) : (
-              <p className="font-display mt-3 text-[32px] tracking-[-0.04em] text-ink">On the road</p>
+              <p className="font-display mt-3 text-[32px] tracking-[-0.04em] text-ink">{countdown.label}</p>
             )}
+            {nextItem || nextBooking ? (
+              <div className="mt-8 space-y-4">
+                {nextItem ? (
+                  <div>
+                    <p className="text-[11px] tracking-[0.12em] text-ink-subtle uppercase">Next</p>
+                    <p className="mt-1 text-sm text-ink">
+                      {nextItem.title}
+                      <span className="text-ink-subtle">
+                        {' '}
+                        · Day {nextItem.dayNumber}
+                        {nextItem.time ? ` · ${formatTime(nextItem.time)}` : ''}
+                      </span>
+                    </p>
+                  </div>
+                ) : null}
+                {nextBooking ? (
+                  <div>
+                    <p className="text-[11px] tracking-[0.12em] text-ink-subtle uppercase">
+                      {BOOKING_TYPE_LABEL[nextBooking.type] ?? 'Booking'}
+                    </p>
+                    <p className="mt-1 text-sm text-ink">
+                      {nextBooking.title}
+                      <span className="text-ink-subtle"> · {formatBookingWhen(nextBooking)}</span>
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           {trip.notes ? (
             <p className="mt-10 max-w-[28ch] text-[14px] leading-relaxed text-ink-muted italic">

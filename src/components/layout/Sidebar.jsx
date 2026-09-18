@@ -8,6 +8,8 @@ import {
   IconTrips,
 } from '../icons.jsx'
 import { Avatar } from '../ui/Avatar.jsx'
+import { AccountLink } from '../auth/AccountLink.jsx'
+import { CloudSyncStatus } from '../sync/CloudSyncStatus.jsx'
 import { NAV_ITEMS } from './nav.js'
 import { ThemeSwitcher } from './ThemeSwitcher.jsx'
 
@@ -74,6 +76,10 @@ export function Sidebar() {
             Back to you
           </button>
         ) : null}
+        <AccountLink className="mt-3 block" />
+        <div className="mt-3">
+          <CloudSyncStatus />
+        </div>
       </div>
     </aside>
   )

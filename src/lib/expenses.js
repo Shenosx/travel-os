@@ -188,6 +188,32 @@ export function getSpendingSummary(expenses, userId) {
   return { total, personal, shared, yourShare, sharedCount, count: expenses.length }
 }
 
+/**
+ * @param {import('../types').Expense[]} expenses
+ */
+export function getSpendByDay(expenses) {
+  /** @type {Record<string, number>} */
+  const totals = {}
+  for (const expense of expenses) {
+    if (!expense?.date) continue
+    const value = getExpenseValue(expense)
+    totals[expense.date] = roundMoney((totals[expense.date] ?? 0) + value)
+  }
+  return Object.entries(totals)
+    .map(([date, amount]) => ({ date, amount }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+}
+
+/**
+ * @param {import('../types').Expense[]} expenses
+ */
+export function getAverageSpendPerDay(expenses) {
+  const days = getSpendByDay(expenses)
+  if (!days.length) return 0
+  const total = roundMoney(days.reduce((sum, item) => sum + item.amount, 0))
+  return roundMoney(total / days.length)
+}
+
 export const CATEGORY_LABEL = {
   flights: 'Flights',
   lodging: 'Lodging',

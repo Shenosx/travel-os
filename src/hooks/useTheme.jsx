@@ -1,20 +1,11 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { applyTheme, readStoredTheme, resolveTheme, writeStoredTheme } from '../lib/theme.js'
 
-const STORAGE_KEY = 'travel-os-theme'
 const ThemeContext = createContext(null)
 
 function getPreferredTheme() {
   if (typeof window === 'undefined') return 'light'
-  const stored = window.localStorage.getItem(STORAGE_KEY)
-  if (stored === 'light' || stored === 'dark') return stored
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
-function applyTheme(theme) {
-  const root = document.documentElement
-  root.classList.toggle('dark', theme === 'dark')
-  const meta = document.querySelector('meta[name="theme-color"]')
-  if (meta) meta.setAttribute('content', theme === 'dark' ? '#11100f' : '#ffffff')
+  return resolveTheme(readStoredTheme(), window.matchMedia('(prefers-color-scheme: dark)').matches)
 }
 
 export function ThemeProvider({ children }) {
@@ -22,7 +13,7 @@ export function ThemeProvider({ children }) {
 
   useEffect(() => {
     applyTheme(theme)
-    window.localStorage.setItem(STORAGE_KEY, theme)
+    writeStoredTheme(theme)
   }, [theme])
 
   const value = useMemo(

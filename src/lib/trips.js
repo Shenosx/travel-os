@@ -1,4 +1,4 @@
-import { daysUntil, durationDays, parseISODate, startOfDay } from './dates.js'
+import { daysUntil, durationDays, parseISODate, startOfDay, todayIso, tripDates, tripDayNumber } from './dates.js'
 import { getExpenseValue, roundMoney } from './currency.js'
 
 /**
@@ -58,6 +58,45 @@ export function getCountdown(trip, today = new Date()) {
   if (status === 'upcoming') return daysUntil(trip.startDate, today)
   if (status === 'ongoing') return 0
   return daysUntil(trip.endDate, today)
+}
+
+function resolveToday(today) {
+  if (today == null || today === '') return new Date()
+  if (typeof today === 'string') return parseISODate(today)
+  return today
+}
+
+/**
+ * Derived countdown copy. Not persisted. Uses device-local calendar dates.
+ *
+ * @param {import('../types').Trip} trip
+ * @param {Date | string} [today]
+ * @returns {{ status: import('../types').TripStatus, label: string, value: number | null }}
+ */
+export function describeTripCountdown(trip, today) {
+  const now = resolveToday(today)
+  const status = getTripStatus(trip, now)
+
+  if (status === 'upcoming') {
+    const value = daysUntil(trip.startDate, now)
+    return {
+      status,
+      label: value === 1 ? '1 day to go' : `${value} days to go`,
+      value,
+    }
+  }
+
+  if (status === 'ongoing') {
+    const total = tripDates(trip).length
+    const value = tripDayNumber(trip, todayIso(now))
+    return {
+      status,
+      label: `Day ${value} of ${total}`,
+      value,
+    }
+  }
+
+  return { status: 'completed', label: 'Trip completed', value: null }
 }
 
 /**

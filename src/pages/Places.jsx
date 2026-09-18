@@ -1,8 +1,13 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { PlaceCard } from '../components/places/PlaceCard.jsx'
+import { usePlaceComposer } from '../components/places/PlaceComposer.jsx'
+import { EmptyState } from '../components/ui/EmptyState.jsx'
 import { useAppData } from '../hooks/useAppData.jsx'
 
 export function PlacesPage() {
-  const { places, trips } = useAppData()
+  const navigate = useNavigate()
+  const { places, trips, itineraries, users, currentUser } = useAppData()
+  const { openCreate } = usePlaceComposer()
 
   return (
     <div>
@@ -11,29 +16,51 @@ export function PlacesPage() {
         Saved places
       </h1>
       <p className="mt-3 max-w-[46ch] text-[15px] text-ink-muted">
-        Hotels, cafés, and sights attached to trips. Bookings and photos will live here later.
+        Hotels, cafés, and sights attached to trips. Open a card to see it on the trip.
       </p>
 
-      <ul className="mt-10 divide-y divide-line border-y border-line">
-        {places.map((place) => {
-          const trip = trips.find((item) => item.id === place.tripId)
-          return (
-            <li key={place.id} className="flex flex-wrap items-baseline justify-between gap-3 py-4">
-              <div>
-                <p className="text-[16px] font-medium text-ink">{place.name}</p>
-                <p className="mt-1 text-[13px] text-ink-subtle">
-                  {[place.category, place.area].filter(Boolean).join(' · ')}
-                </p>
+      {places.length ? (
+        <div className="mt-10 grid gap-4 sm:grid-cols-2">
+          {places.map((place) => {
+            const trip = trips.find((item) => item.id === place.tripId)
+            const itinerary = itineraries.find((entry) => entry.tripId === place.tripId)
+            return (
+              <div key={place.id}>
+                <PlaceCard
+                  place={place}
+                  itinerary={itinerary}
+                  trip={trip}
+                  users={users}
+                  currentUserId={currentUser.id}
+                  onSelect={() => {
+                    if (trip) navigate(`/trips/${trip.id}?tab=places&place=${place.id}`)
+                  }}
+                />
+                {trip ? (
+                  <Link
+                    to={`/trips/${trip.id}?tab=places&place=${place.id}`}
+                    className="mt-2 inline-flex h-10 items-center text-sm text-ink-muted hover:text-ink"
+                  >
+                    {trip.city}
+                  </Link>
+                ) : null}
               </div>
-              {trip ? (
-                <Link to={`/trips/${trip.id}?tab=map`} className="text-sm text-ink-muted hover:text-ink">
-                  {trip.city}
-                </Link>
-              ) : null}
-            </li>
-          )
-        })}
-      </ul>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="mt-10">
+          <EmptyState
+            title="No places yet"
+            body="Save a hotel, café, or sight so it can live on the trip and the map."
+            action={
+              <button type="button" className="text-sm text-accent" onClick={() => openCreate()}>
+                Add a place
+              </button>
+            }
+          />
+        </div>
+      )}
     </div>
   )
 }

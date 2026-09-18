@@ -3,6 +3,7 @@ import { ExpenseRow } from '../components/expenses/ExpenseRow.jsx'
 import { SettlementPanel } from '../components/expenses/SettlementPanel.jsx'
 import { useExpenseComposer } from '../components/expenses/ExpenseComposer.jsx'
 import { ProgressBar } from '../components/ui/ProgressBar.jsx'
+import { EmptyState } from '../components/ui/EmptyState.jsx'
 import { useAppData } from '../hooks/useAppData.jsx'
 import { CATEGORY_LABEL, getBalances, getExpenseActorIds, getExpensesForTrip, getSettlements, getSpendByCategory, getSpendingSummary, getUserSettlement } from '../lib/expenses.js'
 import { formatMoney } from '../lib/format.js'
@@ -133,7 +134,23 @@ export function ExpensesPage() {
             })}
           </ul>
         ) : (
-          <p className="mt-6 border border-line px-5 py-8 text-sm text-ink-muted">No expenses in this view.</p>
+          <div className="mt-6">
+            <EmptyState
+              title={trips.length ? 'No expenses in this view' : 'No expenses yet'}
+              body={
+                canAdd
+                  ? 'Save an amount, who paid, and each person’s share. Nothing is split equally unless you type it that way.'
+                  : 'Spending will appear here once someone adds it to a trip you are on.'
+              }
+              action={
+                canAdd ? (
+                  <button type="button" className="text-sm text-accent" onClick={() => openCreate(selectedTrip?.id)}>
+                    Add expense
+                  </button>
+                ) : null
+              }
+            />
+          </div>
         )}
       </section>
     </div>

@@ -1,15 +1,20 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { formatActivity } from './activity.js'
 import {
   acceptInvitation,
+  acceptInvitationAsInvitee,
   changeMemberRole,
+  ensureUserForInvite,
+  findJoinTarget,
   inviteLink,
   removeMember,
   upsertInvitation,
   voteOnPoll,
 } from './collaboration.js'
 import { getExpenseActorIds } from './expenses.js'
-import { itineraryAttribution } from './itinerary.js'
+import { itineraryAttribution, updateItineraryItemRecord } from './itinerary.js'
+import { peopleForTrip } from './people.js'
 import { users } from '../data/mock.js'
 
 const vienna = {
@@ -147,3 +152,144 @@ test('itinerary attribution stays quiet for the author', () => {
   assert.equal(itineraryAttribution({ createdBy: 'user-jamie' }, users, 'user-jamie'), null)
   assert.equal(itineraryAttribution({ title: 'Flights' }, users, 'user-jamie'), null)
 })
+
+test('joining by token creates a user when needed and adds them as a member', () => {
+  const invitation = {
+    id: 'inv-new',
+    tripId: 'trip-vienna',
+    email: 'nina@example.com',
+    name: 'Nina Park',
+    role: 'viewer',
+    status: 'invited',
+    inviteToken: 'nina-vienna-token',
+    createdAt: '2026-09-07T10:00:00.000Z',
+    invitedBy: 'user-jamie',
+  }
+  const result = acceptInvitationAsInvitee({
+    trip: vienna,
+    invitation,
+    users,
+  })
+  assert.equal(result.ok, true)
+  assert.equal(result.joinedUser.email, 'nina@example.com')
+  assert.ok(result.users.some((user) => user.email === 'nina@example.com'))
+  assert.ok(result.trip.members.some((member) => member.userId === result.joinedUser.id && member.role === 'viewer'))
+})
+
+test('invite link can target the current origin', () => {
+  assert.equal(
+    inviteLink(vienna, { inviteToken: 'abc' }, 'http://localhost:5173'),
+    'http://localhost:5173/join/vienna-k7m2/abc',
+  )
+})
+
+test('findJoinTarget resolves an open invitation', () => {
+  const invitations = [
+    {
+      id: 'inv-1',
+      tripId: 'trip-vienna',
+      email: 'maya@example.com',
+      inviteToken: 'm4y4-vienna-k7n2qp',
+      status: 'pending',
+    },
+  ]
+  const found = findJoinTarget([vienna], invitations, 'vienna-k7m2', 'm4y4-vienna-k7n2qp')
+  assert.equal(found.ok, true)
+  assert.equal(found.invitation.email, 'maya@example.com')
+})
+
+test('new members become expense people; removed members stay on history', () => {
+  const expenses = [
+    {
+      tripId: 'trip-vienna',
+      payerId: 'user-jason',
+      shares: [
+        { userId: 'user-jamie', amount: 40 },
+        { userId: 'user-jason', amount: 50 },
+      ],
+    },
+  ]
+  const withMaya = {
+    ...vienna,
+    members: [...vienna.members, { userId: 'user-maya', role: 'editor' }],
+  }
+  const available = peopleForTrip(withMaya, expenses, users)
+  assert.ok(available.some((person) => person.userId === 'user-maya' && !person.former))
+
+  const afterRemove = removeMember(vienna, 'user-jamie', 'user-jason').trip
+  const remaining = peopleForTrip(afterRemove, expenses, users)
+  const jason = remaining.find((person) => person.userId === 'user-jason')
+  assert.equal(jason.former, true)
+  assert.ok(remaining.some((person) => person.userId === 'user-jamie' && !person.former))
+})
+
+test('updating an itinerary item stores updatedBy without dropping createdBy', () => {
+  const itineraries = [
+    {
+      tripId: 'trip-vienna',
+      days: [
+        {
+          date: '2026-12-12',
+          dayNumber: 1,
+          title: 'Arrival',
+          items: [
+            {
+              id: 'vie-d1-2',
+              title: 'Hotel check-in',
+              createdBy: 'user-jamie',
+              createdAt: '2026-08-20T10:00:00.000Z',
+            },
+          ],
+        },
+      ],
+    },
+  ]
+  const result = updateItineraryItemRecord(
+    itineraries,
+    'trip-vienna',
+    'vie-d1-2',
+    { title: 'Hotel Sacher check-in' },
+    'user-alex',
+    '2026-09-04T11:00:00.000Z',
+  )
+  assert.equal(result.item.createdBy, 'user-jamie')
+  assert.equal(result.item.updatedBy, 'user-alex')
+  assert.equal(result.item.title, 'Hotel Sacher check-in')
+})
+
+test('activity sentences stay conversational', () => {
+  assert.equal(
+    formatActivity(
+      { actorId: 'user-alex', type: 'itinerary.add', meta: { title: 'Belvedere Palace' } },
+      users,
+      'user-jamie',
+    ),
+    'Alex added “Belvedere Palace”',
+  )
+  assert.equal(
+    formatActivity(
+      { actorId: 'user-jamie', type: 'expense.add', meta: { title: 'Dinner at Café Central' } },
+      users,
+      'user-jamie',
+    ),
+    'You added “Dinner at Café Central”',
+  )
+  assert.equal(
+    formatActivity({ actorId: 'user-jason', type: 'member.join', meta: { name: 'Jason' } }, users, 'user-jamie'),
+    'Jason joined the trip',
+  )
+  assert.equal(
+    formatActivity({ actorId: 'user-jason', type: 'member.join', meta: { name: 'Jason' } }, users, 'user-jason'),
+    'You joined the trip',
+  )
+})
+
+test('ensureUserForInvite reuses an existing person', () => {
+  const first = ensureUserForInvite(users, 'maya@example.com')
+  assert.equal(first.created, false)
+  assert.equal(first.user.id, 'user-maya')
+  const second = ensureUserForInvite(users, 'guest@example.com', 'Guest Friend')
+  assert.equal(second.created, true)
+  assert.equal(second.user.name, 'Guest Friend')
+})
+

@@ -1,32 +1,44 @@
-import { useEffect, useState } from 'react'
+import { createContext, useContext, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useExpenseComposer } from '../expenses/ExpenseComposer.jsx'
+import { usePlaceComposer } from '../places/PlaceComposer.jsx'
+import { useBookingComposer } from '../bookings/BookingComposer.jsx'
 import { useAppData } from '../../hooks/useAppData.jsx'
+import { isIsoDate } from '../../lib/dates.js'
+import { resolveCalendarAddDate } from '../../lib/itinerary.js'
 import { canOnTrip } from '../../lib/permissions.js'
-import { IconClose, IconPlus } from '../icons.jsx'
+import { IconPlus } from '../icons.jsx'
 import { Button } from '../ui/Button.jsx'
 import { Field, fieldClass } from '../ui/Field.jsx'
+import { Sheet } from '../ui/Sheet.jsx'
+
+const QuickAddContext = createContext(null)
 
 const ACTIONS = [
   {
     id: 'trip',
-    label: 'New trip',
+    label: 'Trip',
     hint: 'Destination and dates',
   },
   {
     id: 'expense',
-    label: 'Add expense',
+    label: 'Expense',
     hint: 'Amount, payer, unequal shares',
   },
   {
     id: 'itinerary',
-    label: 'Add itinerary item',
+    label: 'Itinerary stop',
     hint: 'A stop in the day',
   },
   {
     id: 'place',
-    label: 'Add place',
+    label: 'Place',
     hint: 'Save somewhere to return to',
+  },
+  {
+    id: 'booking',
+    label: 'Booking',
+    hint: 'Flight, hotel, ticket, or other',
   },
 ]
 
@@ -35,14 +47,46 @@ function tripIdFromPath(pathname) {
   return match?.[1] ?? null
 }
 
-export function QuickAddButton() {
+export function QuickAddProvider({ children }) {
   const [open, setOpen] = useState(false)
   const [action, setAction] = useState(null)
+
+  const value = useMemo(
+    () => ({
+      openMenu: () => {
+        setAction(null)
+        setOpen(true)
+      },
+      openAction: (id) => {
+        setAction(id)
+        setOpen(true)
+      },
+    }),
+    [],
+  )
+
+  return (
+    <QuickAddContext.Provider value={value}>
+      {children}
+      <QuickAddButton open={open} setOpen={setOpen} action={action} setAction={setAction} />
+    </QuickAddContext.Provider>
+  )
+}
+
+export function useQuickAdd() {
+  return useContext(QuickAddContext) ?? { openMenu: () => {}, openAction: () => {} }
+}
+
+export function QuickAddButton({ open, setOpen, action, setAction }) {
   const { openCreate } = useExpenseComposer()
+  const { openCreate: openPlace } = usePlaceComposer()
+  const { openCreate: openBooking } = useBookingComposer()
   const { trips, currentUser } = useAppData()
   const location = useLocation()
   const contextTripId = tripIdFromPath(location.pathname)
   const contextTrip = trips.find((trip) => trip.id === contextTripId)
+  const [dirty, setDirty] = useState(false)
+  const [askDiscard, setAskDiscard] = useState(false)
   const visibleActions = ACTIONS.filter((item) => {
     if (item.id === 'trip') return true
     if (item.id === 'expense') {
@@ -60,28 +104,39 @@ export function QuickAddButton() {
         ? canOnTrip(contextTrip, currentUser.id, 'addPlace')
         : trips.some((trip) => canOnTrip(trip, currentUser.id, 'addPlace'))
     }
+    if (item.id === 'booking') {
+      return contextTrip
+        ? canOnTrip(contextTrip, currentUser.id, 'addBooking')
+        : trips.some((trip) => canOnTrip(trip, currentUser.id, 'addBooking'))
+    }
     return true
   })
 
-  useEffect(() => {
-    if (!open) return undefined
-    const onKey = (event) => {
-      if (event.key === 'Escape') {
-        setAction(null)
-        setOpen(false)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
+  function dismiss() {
+    setAskDiscard(false)
+    setDirty(false)
+    setOpen(false)
+    setAction(null)
+  }
 
   function choose(id) {
+    const tripId = tripIdFromPath(location.pathname)
     if (id === 'expense') {
-      setOpen(false)
-      setAction(null)
-      openCreate(tripIdFromPath(location.pathname))
+      dismiss()
+      openCreate(tripId)
       return
     }
+    if (id === 'place') {
+      dismiss()
+      openPlace(tripId)
+      return
+    }
+    if (id === 'booking') {
+      dismiss()
+      openBooking(tripId)
+      return
+    }
+    setDirty(false)
     setAction(id)
   }
 
@@ -90,6 +145,8 @@ export function QuickAddButton() {
       <button
         type="button"
         onClick={() => {
+          setAskDiscard(false)
+          setDirty(false)
           setAction(null)
           setOpen(true)
         }}
@@ -100,82 +157,78 @@ export function QuickAddButton() {
       </button>
 
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
-          <button
-            type="button"
-            className="absolute inset-0 bg-ink/25 dark:bg-black/50"
-            aria-label="Dismiss overlay"
-            onClick={() => {
-              setOpen(false)
-              setAction(null)
-            }}
-          />
-          <div className="relative w-full max-w-[420px] rounded-t-xl border border-line bg-surface p-5 sm:rounded-xl sm:p-6">
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">Quick add</p>
-                <h2 className="font-display mt-1 text-[26px] leading-tight tracking-[-0.03em]">
-                  {action ? ACTIONS.find((item) => item.id === action)?.label : 'Add to your trip'}
-                </h2>
+        <Sheet
+          kicker="Quick add"
+          title={action ? ACTIONS.find((item) => item.id === action)?.label : 'Add to your trip'}
+          onClose={dismiss}
+          dirty={dirty}
+        >
+          {action ? (
+            <QuickAddForm
+              action={action}
+              onBack={() => {
+                if (dirty) {
+                  setAskDiscard(true)
+                  return
+                }
+                setAction(null)
+              }}
+              onDirty={() => setDirty(true)}
+              onDone={dismiss}
+            />
+          ) : (
+            <ul className="divide-y divide-line border-y border-line">
+              {visibleActions.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => choose(item.id)}
+                    className="flex w-full items-center justify-between py-3.5 text-left"
+                  >
+                    <span>
+                      <span className="block text-sm font-medium text-ink">{item.label}</span>
+                      <span className="mt-0.5 block text-[13px] text-ink-subtle">{item.hint}</span>
+                    </span>
+                    <span className="text-ink-subtle">›</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {askDiscard ? (
+            <div
+              className="absolute inset-0 z-10 flex items-end rounded-t-xl bg-ink/25 sm:items-center sm:justify-center sm:rounded-xl dark:bg-black/50"
+              role="alertdialog"
+              aria-modal="true"
+              aria-label="Discard changes?"
+            >
+              <div className="w-full border-t border-line bg-surface p-5 sm:mx-6 sm:rounded-xl sm:border">
+                <p className="text-sm text-ink">Discard changes?</p>
+                <div className="mt-4 flex justify-end gap-3">
+                  <button type="button" className="text-sm text-ink-muted" onClick={() => setAskDiscard(false)}>
+                    Cancel
+                  </button>
+                  <Button onClick={dismiss}>Discard</Button>
+                </div>
               </div>
-              <button
-                type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-md text-ink-muted hover:bg-canvas-muted"
-                onClick={() => {
-                  setOpen(false)
-                  setAction(null)
-                }}
-                aria-label="Close"
-              >
-                <IconClose className="h-4 w-4" />
-              </button>
             </div>
-
-            {action ? (
-              <QuickAddForm
-                action={action}
-                onBack={() => setAction(null)}
-                onDone={() => {
-                  setOpen(false)
-                  setAction(null)
-                }}
-              />
-            ) : (
-              <ul className="divide-y divide-line border-y border-line">
-                {visibleActions.map((item) => (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      onClick={() => choose(item.id)}
-                      className="flex w-full items-center justify-between py-3.5 text-left"
-                    >
-                      <span>
-                        <span className="block text-sm font-medium text-ink">{item.label}</span>
-                        <span className="mt-0.5 block text-[13px] text-ink-subtle">{item.hint}</span>
-                      </span>
-                      <span className="text-ink-subtle">›</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
+          ) : null}
+        </Sheet>
       ) : null}
     </>
   )
 }
 
-function QuickAddForm({ action, onBack, onDone }) {
+function QuickAddForm({ action, onBack, onDone, onDirty }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { trips, currentUser, addTrip, addItineraryItem, addPlace } = useAppData()
-  const permission =
-    action === 'itinerary' ? 'editItinerary' : action === 'place' ? 'addPlace' : null
+  const { trips, currentUser, addTrip, addItineraryItem } = useAppData()
+  const permission = action === 'itinerary' ? 'editItinerary' : null
   const eligibleTrips = permission
     ? trips.filter((trip) => canOnTrip(trip, currentUser.id, permission))
     : trips
   const contextTripId = tripIdFromPath(location.pathname)
+  const calendarDate = new URLSearchParams(location.search).get('date')
   const defaultTripId = eligibleTrips.some((trip) => trip.id === contextTripId)
     ? contextTripId
     : (eligibleTrips[0]?.id ?? '')
@@ -186,7 +239,10 @@ function QuickAddForm({ action, onBack, onDone }) {
   const [endDate, setEndDate] = useState('')
   const [budget, setBudget] = useState('')
   const [title, setTitle] = useState('')
-  const [date, setDate] = useState('')
+  const [date, setDate] = useState(() => {
+    const trip = trips.find((entry) => entry.id === defaultTripId)
+    return resolveCalendarAddDate(calendarDate, trip)
+  })
   const [place, setPlace] = useState('')
 
   function selectedTrip() {
@@ -211,23 +267,24 @@ function QuickAddForm({ action, onBack, onDone }) {
     }
     if (action === 'itinerary') {
       if (!tripId || !title) return
-      const item = addItineraryItem(tripId, date || selectedTrip()?.startDate, { title, place })
+      const trip = selectedTrip()
+      const itemDate = resolveCalendarAddDate(date, trip)
+      const item = addItineraryItem(tripId, itemDate, { title, place })
       if (!item) return
       onDone()
-      navigate(`/trips/${tripId}?tab=itinerary`)
+      const next = new URLSearchParams(location.search)
+      next.set('tab', 'itinerary')
+      next.set('item', item.id)
+      if (itemDate) next.set('date', itemDate)
+      const view = next.get('view')
+      if (view !== 'month' && view !== 'week' && view !== 'day') next.delete('view')
+      navigate(`/trips/${tripId}?${next.toString()}`)
       return
-    }
-    if (action === 'place') {
-      if (!tripId || !title) return
-      const saved = addPlace({ tripId, name: title, area: place, category: 'Saved' })
-      if (!saved) return
-      onDone()
-      navigate(`/trips/${tripId}?tab=map`)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} onInput={onDirty} onChange={onDirty} className="space-y-4">
       {action === 'trip' ? (
         <>
           <Field label="Destination">
@@ -273,23 +330,17 @@ function QuickAddForm({ action, onBack, onDone }) {
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Date">
-              <input className={fieldClass} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+              <input
+                className={fieldClass}
+                type="date"
+                value={isIsoDate(date) ? date : ''}
+                onChange={(e) => setDate(e.target.value)}
+              />
             </Field>
             <Field label="Place">
               <input className={fieldClass} value={place} onChange={(e) => setPlace(e.target.value)} placeholder="Optional" />
             </Field>
           </div>
-        </>
-      ) : null}
-
-      {action === 'place' ? (
-        <>
-          <Field label="Name">
-            <input className={fieldClass} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Café Sperl" required autoFocus />
-          </Field>
-          <Field label="Area">
-            <input className={fieldClass} value={place} onChange={(e) => setPlace(e.target.value)} placeholder="Mariahilf" />
-          </Field>
         </>
       ) : null}
 

@@ -1,12 +1,13 @@
 import { formatDateRange } from '../../lib/dates.js'
 import { formatMoney, spendingPercent } from '../../lib/format.js'
-import { getTripDurationDays } from '../../lib/trips.js'
+import { describeTripCountdown, getTripDurationDays } from '../../lib/trips.js'
 import { displayName } from '../../data/mock.js'
 import { ROLE_LABEL } from '../../lib/people.js'
 import { Avatar } from '../ui/Avatar.jsx'
 import { Badge } from '../ui/Badge.jsx'
 import { Card } from '../ui/Card.jsx'
 import { ProgressBar } from '../ui/ProgressBar.jsx'
+import { ActivityFeed } from './ActivityFeed.jsx'
 import { TripPoll } from './TripPoll.jsx'
 
 export function TripOverview({
@@ -17,10 +18,13 @@ export function TripOverview({
   currentUserId,
   finance,
   poll,
+  activities,
+  users,
   canVote,
   onVote,
 }) {
   const duration = getTripDurationDays(trip)
+  const countdown = describeTripCountdown(trip)
   const percent = spendingPercent(spent, trip.budgetAmount)
   const remaining = trip.budgetAmount - spent
   const firstDay = itinerary?.days?.[0]
@@ -37,7 +41,10 @@ export function TripOverview({
           <dl className="mt-8 grid grid-cols-2 gap-6 sm:grid-cols-3">
             <div>
               <dt className="text-[11px] tracking-[0.12em] text-ink-subtle uppercase">Dates</dt>
-              <dd className="mt-1 text-sm text-ink">{formatDateRange(trip.startDate, trip.endDate)}</dd>
+              <dd className="mt-1 text-sm text-ink">
+                {formatDateRange(trip.startDate, trip.endDate)}
+                <span className="mt-1 block text-[13px] text-ink-subtle">{countdown.label}</span>
+              </dd>
             </div>
             <div>
               <dt className="text-[11px] tracking-[0.12em] text-ink-subtle uppercase">Duration</dt>
@@ -117,6 +124,10 @@ export function TripOverview({
             ))}
           </ul>
         </Card>
+
+        {activities?.length ? (
+          <ActivityFeed activities={activities} users={users} currentUserId={currentUserId} />
+        ) : null}
 
         <TripPoll poll={poll} currentUserId={currentUserId} canVote={canVote} onVote={onVote} />
       </div>
