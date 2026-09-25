@@ -7,11 +7,11 @@ import { ItineraryWorkspace } from '../components/trip/ItineraryTimeline.jsx'
 import { MapPanel } from '../components/trip/MapPanel.jsx'
 import { PackingView } from '../components/trip/packing/PackingView.jsx'
 import { ChecklistView } from '../components/trip/checklist/ChecklistView.jsx'
+import { NotesView } from '../components/trip/notes/NotesView.jsx'
 import { PeoplePanel } from '../components/trip/PeoplePanel.jsx'
 import { TripOverview } from '../components/trip/TripOverview.jsx'
 import { MoveToCloudSheet } from '../components/trips/MoveToCloudSheet.jsx'
-import { TripStatusBadge } from '../components/trips/TripCard.jsx'
-import { Badge } from '../components/ui/Badge.jsx'
+import { TripInsights } from '../components/trip/TripInsights.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { Card } from '../components/ui/Card.jsx'
 import { Tabs } from '../components/ui/Tabs.jsx'
@@ -29,7 +29,7 @@ import {
   getUserSettlement,
 } from '../lib/expenses.js'
 import { membersForTrip, peopleForTrip } from '../lib/people.js'
-import { getTripDurationDays, getTripSpending } from '../lib/trips.js'
+import { describeTripCountdown, getTripSpending, STATUS_LABEL } from '../lib/trips.js'
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
@@ -39,6 +39,7 @@ const TABS = [
   { id: 'bookings', label: 'Bookings' },
   { id: 'expenses', label: 'Expenses' },
   { id: 'people', label: 'People' },
+  { id: 'insights', label: 'Insights' },
 ]
 
 export function TripDetailsPage() {
@@ -69,6 +70,7 @@ export function TripDetailsPage() {
   const tab = TABS.some((item) => item.id === params.get('tab')) ? params.get('tab') : 'overview'
   const packingOpen = params.get('packing') === '1'
   const checklistOpen = params.get('checklist') === '1'
+  const notesOpen = params.get('notes') === '1'
   const selectedPlaceId = params.get('place')
   const selectedItemId = params.get('item')
   const selectedBookingId = params.get('booking')
@@ -184,40 +186,55 @@ export function TripDetailsPage() {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 4)
 
+  const countdown = describeTripCountdown(trip)
+  const showCountdown = countdown.status === 'upcoming' && countdown.value != null
+
   return (
     <div>
       <Link to="/trips" className="text-[13px] text-ink-subtle hover:text-ink">
         ← Trips
       </Link>
 
-      <div className="mt-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <TripStatusBadge trip={trip} />
-            <Badge tone="muted">{trip.visibility === 'shared' ? 'Shared' : 'Private'}</Badge>
-          </div>
-          <h1 className="font-display mt-3 text-[40px] leading-[1.05] tracking-[-0.04em] sm:text-[52px]">
-            {trip.city}
-          </h1>
-          <p className="mt-2 text-[15px] text-ink-muted">
-            {trip.country}
-            <span className="text-ink-subtle"> · {formatDateRange(trip.startDate, trip.endDate)}</span>
-            <span className="text-ink-subtle"> · {getTripDurationDays(trip)} days</span>
+      <header className="mt-6 flex flex-col gap-8 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] tracking-[0.18em] text-ink-subtle uppercase">
+            {STATUS_LABEL[countdown.status]}
+            <span className="text-ink-muted">
+              {' '}
+              · {trip.visibility === 'shared' ? 'Shared' : 'Personal'}
+            </span>
           </p>
+          <h1 className="font-display mt-3 text-[40px] leading-[1.02] tracking-[-0.045em] text-ink sm:text-[56px]">
+            {trip.city || trip.destination}
+          </h1>
+          {trip.country ? <p className="mt-2 text-[15px] text-ink-muted">{trip.country}</p> : null}
+          <p className="mt-4 text-[15px] text-ink">{formatDateRange(trip.startDate, trip.endDate)}</p>
         </div>
-        {configured && cloudUser ? (
-          <Button variant="outline" onClick={() => setMigrateOpen(true)}>
-            Move to Cloud
-          </Button>
-        ) : null}
-      </div>
 
-      <div className="mt-8">
-        <Tabs
-          tabs={TABS}
-          value={tab}
-          onChange={setTab}
-        />
+        <div className="flex flex-wrap items-end gap-6">
+          {showCountdown ? (
+            <div>
+              <p className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">Departs in</p>
+              <p className="font-display mt-2 text-[44px] leading-none tracking-[-0.05em] text-ink sm:text-[52px]">
+                {countdown.value}
+                <span className="ml-1.5 font-sans text-[13px] tracking-normal text-ink-muted">
+                  {countdown.value === 1 ? 'day' : 'days'}
+                </span>
+              </p>
+            </div>
+          ) : countdown.status === 'ongoing' ? (
+            <p className="font-display text-[22px] tracking-[-0.03em] text-ink">{countdown.label}</p>
+          ) : null}
+          {configured && cloudUser ? (
+            <Button variant="outline" onClick={() => setMigrateOpen(true)}>
+              Move to Cloud
+            </Button>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="mt-8 sm:mt-10">
+        <Tabs tabs={TABS} value={tab} onChange={setTab} />
       </div>
 
       <div className="mt-8">
@@ -225,6 +242,8 @@ export function TripDetailsPage() {
           <PackingView tripId={trip.id} />
         ) : checklistOpen ? (
           <ChecklistView tripId={trip.id} />
+        ) : notesOpen ? (
+          <NotesView tripId={trip.id} />
         ) : (
           <>
         {tab === 'overview' ? (
@@ -233,13 +252,23 @@ export function TripDetailsPage() {
             spent={spent}
             members={members}
             itinerary={itinerary}
+            places={tripPlaces}
+            bookings={tripBookings}
+            expenses={tripExpenses}
+            invitations={invitations}
             currentUserId={currentUser.id}
             finance={finance}
             poll={poll}
             activities={recentActivity}
             users={users}
+            permissions={permissions}
             canVote={permissions.canVote}
             onVote={(optionId) => votePoll(poll.id, optionId)}
+            onOpenTab={setTab}
+            onOpenPlace={(placeId) => setPlaceSelection(placeId, { tab: 'places' })}
+            onOpenBooking={(bookingId) =>
+              setParams({ tab: 'bookings', booking: bookingId }, { replace: true })
+            }
           />
         ) : null}
         {tab === 'itinerary' ? (
@@ -265,7 +294,7 @@ export function TripDetailsPage() {
             onSelectDate={(iso) =>
               writeTripParams({
                 tab: 'itinerary',
-                view: CALENDAR_VIEWS.has(itineraryView) ? itineraryView : 'month',
+                view: itineraryView,
                 date: iso,
               })
             }
@@ -329,6 +358,14 @@ export function TripDetailsPage() {
         ) : null}
         {tab === 'people' ? (
           <PeoplePanel trip={trip} members={members} currentUserId={currentUser.id} />
+        ) : null}
+        {tab === 'insights' ? (
+          <TripInsights
+            trip={trip}
+            expenses={tripExpenses}
+            currentUserId={currentUser.id}
+            canAdd={permissions.canAddExpense}
+          />
         ) : null}
           </>
         )}

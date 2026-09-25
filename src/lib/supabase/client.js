@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseConfig } from './env.js'
 
+export const AUTH_STORAGE_KEY = 'travel-os-auth'
+
 let client = null
 let clientKey = ''
 
@@ -43,7 +45,7 @@ function createConfiguredClient(source) {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      storageKey: 'travel-os-auth',
+      storageKey: AUTH_STORAGE_KEY,
     },
   })
   clientKey = nextKey

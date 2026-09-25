@@ -1,97 +1,149 @@
-import { Link } from 'react-router-dom'
 import { UpcomingHero } from '../components/dashboard/UpcomingHero.jsx'
-import { StatGrid } from '../components/dashboard/StatGrid.jsx'
+import { HomeActivity } from '../components/dashboard/HomeActivity.jsx'
+import { HomeItinerary } from '../components/dashboard/HomeItinerary.jsx'
+import { HomeQuickActions } from '../components/dashboard/HomeQuickActions.jsx'
+import { HomeSpending } from '../components/dashboard/HomeSpending.jsx'
+import { HomeTripRail } from '../components/dashboard/HomeTripRail.jsx'
 import { useQuickAdd } from '../components/layout/QuickAddButton.jsx'
-import { TripCard } from '../components/trips/TripCard.jsx'
 import { EmptyState } from '../components/ui/EmptyState.jsx'
 import { useAppData } from '../hooks/useAppData.jsx'
-import { getUpcomingBooking } from '../lib/bookings.js'
-import { greetingForTime } from '../lib/dates.js'
-import { formatMoney } from '../lib/format.js'
-import { getNextItineraryItem } from '../lib/itinerary.js'
-import { getNextTrip, getTripSpending, getTravelStats, getUpcomingTrips } from '../lib/trips.js'
+import { flattenItineraryItems } from '../lib/itinerary.js'
+import { greetingForTime, todayIso } from '../lib/dates.js'
+import { HOME_CURRENCY } from '../lib/currency.js'
+import { getNextTrip, getTripSpending, getTripStatus, getUpcomingTrips } from '../lib/trips.js'
+
+function formatToday(now = new Date()) {
+  return now.toLocaleDateString('en-GB', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+function railTrips(trips, nextTrip) {
+  const upcoming = getUpcomingTrips(trips).filter((trip) => trip.id !== nextTrip?.id)
+  const recent = trips
+    .filter((trip) => getTripStatus(trip) === 'completed')
+    .sort((a, b) => b.endDate.localeCompare(a.endDate))
+  const seen = new Set()
+  return [...upcoming, ...recent].filter((trip) => {
+    if (seen.has(trip.id)) return false
+    seen.add(trip.id)
+    return true
+  })
+}
+
+function upcomingItineraryItems(itinerary, places, today = todayIso()) {
+  return flattenItineraryItems(itinerary)
+    .filter((item) => item.date >= today)
+    .slice(0, 5)
+    .map((item) => ({
+      ...item,
+      location:
+        item.place || places.find((place) => place.id === item.placeId)?.name || item.dayTitle || '',
+    }))
+}
 
 export function DashboardPage() {
-  const { currentUser, trips, expenses, itineraries, bookings } = useAppData()
+  const { currentUser, trips, expenses, itineraries, places, activities, users } = useAppData()
   const { openAction } = useQuickAdd()
   const nextTrip = getNextTrip(trips)
-  const upcoming = getUpcomingTrips(trips).filter((trip) => trip.id !== nextTrip?.id)
-  const stats = getTravelStats(trips, expenses)
   const firstName = currentUser.name.split(' ')[0]
   const nextItinerary = nextTrip ? itineraries.find((entry) => entry.tripId === nextTrip.id) : null
-  const nextItem = getNextItineraryItem(nextItinerary)
-  const nextBooking = nextTrip
-    ? getUpcomingBooking(bookings.filter((booking) => booking.tripId === nextTrip.id))
-    : null
+  const itineraryItems = upcomingItineraryItems(nextItinerary, places)
+  const otherTrips = railTrips(trips, nextTrip)
+  const spent = nextTrip
+    ? getTripSpending(expenses, nextTrip.id)
+    : expenses.reduce((sum, expense) => sum + (expense.convertedAmount ?? expense.amount ?? 0), 0)
+  const budget = nextTrip
+    ? nextTrip.budgetAmount
+    : trips.reduce((sum, trip) => sum + (trip.budgetAmount ?? 0), 0)
+  const currency = nextTrip?.currency ?? HOME_CURRENCY
+  const recentActivity = [...activities]
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .slice(0, 6)
+  const noteHref = nextTrip ? `/trips/${nextTrip.id}?notes=1` : trips[0] ? `/trips/${trips[0].id}?notes=1` : ''
 
   return (
     <div>
-      <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">Dashboard</p>
-      <h1 className="font-display mt-2 text-[36px] leading-[1.1] tracking-[-0.04em] text-ink sm:text-[44px]">
-        {greetingForTime()}, {firstName}
-      </h1>
-      <p className="mt-3 max-w-[46ch] text-[15px] text-ink-muted">
-        {nextTrip
-          ? `Your next departure is ${nextTrip.destination}. Everything for the week, in one place.`
-          : trips.length
-            ? 'No upcoming trips just now. The ones on file are still here.'
-            : 'The atlas is empty. Start with a destination and dates.'}
-      </p>
+      <header>
+        <p className="text-[11px] tracking-[0.18em] text-ink-subtle uppercase">{greetingForTime()}</p>
+        <h1 className="font-display mt-2 text-[34px] leading-[1.05] tracking-[-0.04em] text-ink sm:text-[44px]">
+          {firstName}
+        </h1>
+        <p className="mt-2 text-[14px] text-ink-muted">{formatToday()}</p>
+      </header>
 
-      {nextTrip ? (
-        <div className="mt-10">
-          <UpcomingHero
-            trip={nextTrip}
-            spent={getTripSpending(expenses, nextTrip.id)}
-            nextItem={nextItem}
-            nextBooking={nextBooking}
-          />
-        </div>
-      ) : null}
-
-      <section className="mt-12">
-        <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">This year</h2>
-        </div>
-        <StatGrid stats={stats} formatMoney={formatMoney} />
-      </section>
-
-      <section className="mt-12">
-        <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">Upcoming trips</h2>
-          <Link to="/trips" className="text-sm text-ink-muted hover:text-ink">
-            All trips
-          </Link>
-        </div>
-        {upcoming.length ? (
-          <div className="grid gap-4 md:grid-cols-2">
-            {upcoming.map((trip) => (
-              <TripCard
-                key={trip.id}
-                trip={trip}
-                spent={getTripSpending(expenses, trip.id)}
-                invited={!trip.members.some((member) => member.userId === currentUser.id)}
-              />
-            ))}
-          </div>
-        ) : !trips.length ? (
+      <div className="mt-9 sm:mt-11">
+        {nextTrip ? (
+          <UpcomingHero trip={nextTrip} />
+        ) : (
           <EmptyState
-            title="No journeys on file yet"
-            body="Add a destination when you are ready — dates, people, and the days will follow."
+            className="px-6 py-14"
+            title={trips.length ? 'No upcoming trip' : 'The atlas is empty'}
+            body={
+              trips.length
+                ? 'The trips on file have already happened. Add the next destination when you are ready.'
+                : 'Start with a destination and dates. The countdown will wait here.'
+            }
             action={
               <button type="button" className="text-sm text-accent" onClick={() => openAction('trip')}>
                 Add a trip
               </button>
             }
           />
-        ) : (
-          <p className="border border-line px-5 py-8 text-sm text-ink-muted">
-            {nextTrip
-              ? `No other upcoming trips. ${nextTrip.city} is next.`
-              : 'Add a trip to begin.'}
-          </p>
         )}
-      </section>
+      </div>
+
+      <div className="mt-14 lg:mt-16">
+        <HomeTripRail
+          trips={otherTrips}
+          emptyAction={
+            !trips.length ? (
+              <button type="button" className="text-sm text-accent" onClick={() => openAction('trip')}>
+                Add a trip
+              </button>
+            ) : null
+          }
+        />
+      </div>
+
+      <div className="mt-14 grid gap-12 lg:mt-16 lg:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)] lg:items-start lg:gap-16">
+        <HomeItinerary
+          items={itineraryItems}
+          tripId={nextTrip?.id}
+          emptyAction={
+            nextTrip ? (
+              <button type="button" className="text-sm text-accent" onClick={() => openAction('itinerary')}>
+                Add a stop
+              </button>
+            ) : null
+          }
+        />
+        <div className="space-y-12">
+          <HomeSpending
+            spent={spent}
+            budget={budget}
+            currency={currency}
+            emptyAction={
+              <button type="button" className="text-sm text-accent" onClick={() => openAction('expense')}>
+                Add expense
+              </button>
+            }
+          />
+          <HomeQuickActions
+            onExpense={() => openAction('expense')}
+            onPlace={() => openAction('place')}
+            onBooking={() => openAction('booking')}
+            noteHref={noteHref}
+          />
+        </div>
+      </div>
+
+      <div className="mt-16 border-t border-line pt-10 lg:mt-20">
+        <HomeActivity activities={recentActivity} users={users} currentUserId={currentUser.id} />
+      </div>
     </div>
   )
 }

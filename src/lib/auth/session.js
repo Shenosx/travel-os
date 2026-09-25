@@ -14,6 +14,47 @@ export function mapAuthUser(user) {
   }
 }
 
+function isUsableAuthUser(user) {
+  if (!user || typeof user !== 'object') return false
+  // Proxy from supabase-js when user was stripped out of the stored session.
+  // Check this before reading `.id` — property access on the proxy throws.
+  if (user.__isUserNotAvailableProxy) return false
+  return typeof user.id === 'string' && user.id.length > 0
+}
+
+function decodeJwtPayload(token) {
+  const parts = String(token ?? '').split('.')
+  if (parts.length !== 3) return null
+  try {
+    const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (parts[1].length % 4)) % 4)
+    const json = typeof atob === 'function' ? atob(padded) : Buffer.from(padded, 'base64').toString('utf8')
+    const payload = JSON.parse(json)
+    return payload && typeof payload === 'object' ? payload : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Resolves the Supabase Auth user from a session. `session` can be truthy
+ * while `session.user` is missing (or an unreadable proxy); the access token
+ * still carries `sub` for local namespacing. Never a substitute for currentUser.
+ */
+export function authUserFromSession(session) {
+  if (!session || typeof session !== 'object') return null
+  if (isUsableAuthUser(session.user)) return session.user
+
+  const claims = decodeJwtPayload(session.access_token)
+  const id = typeof claims?.sub === 'string' ? claims.sub : ''
+  if (!id) return null
+
+  return {
+    id,
+    email: typeof claims.email === 'string' ? claims.email : '',
+    user_metadata: {},
+  }
+}
+
 export function isEmailConfirmationPending(result) {
   return Boolean(result?.user) && !result?.session
 }

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAppData } from '../../hooks/useAppData.jsx'
 import {
   BOOKING_STATUS_LABEL,
@@ -9,6 +9,7 @@ import {
   expenseForBooking,
   formatBookingCost,
   formatBookingWhen,
+  itineraryItemForBooking,
 } from '../../lib/bookings.js'
 import { formatQuietDate, tripDates, tripDayNumber } from '../../lib/dates.js'
 import { formatTime } from '../../lib/format.js'
@@ -64,6 +65,7 @@ function BookingComposerSheet() {
     trips,
     bookings,
     expenses,
+    itineraries,
     currentUser,
     addBooking,
     updateBooking,
@@ -159,13 +161,16 @@ function BookingComposerSheet() {
   }
 
   const trip = trips.find((item) => item.id === booking.tripId)
+  const itinerary = itineraries.find((entry) => entry.tripId === booking.tripId)
   const linkedExpense = expenseForBooking(expenses, booking.id)
+  const linkedItinerary = itineraryItemForBooking(itinerary, booking.id)
 
   return (
     <BookingDetailsSheet
       booking={booking}
       trip={trip}
       linkedExpense={linkedExpense}
+      linkedItinerary={linkedItinerary}
       permissions={permissionsFor(trip)}
       onClose={close}
       onEdit={() => openEdit(booking.id)}
@@ -177,7 +182,7 @@ function BookingComposerSheet() {
         const item = addBookingToItinerary(booking.id, date, time)
         if (item) {
           close()
-          navigate(`/trips/${booking.tripId}?tab=itinerary&item=${item.id}`)
+          navigate(`/trips/${booking.tripId}?tab=itinerary&item=${item.id}&date=${date}`)
         }
       }}
       onAddExpense={() => {
@@ -199,6 +204,7 @@ function BookingDetailsSheet({
   booking,
   trip,
   linkedExpense,
+  linkedItinerary,
   permissions,
   onClose,
   onEdit,
@@ -213,6 +219,13 @@ function BookingDetailsSheet({
   const canSchedule = permissions?.canEditItinerary
   const canRemove = permissions?.canDeleteBooking(booking)
   const canExpense = permissions?.canAddExpense && booking.cost != null && !linkedExpense
+  const dayNumber =
+    linkedItinerary?.day.dayNumber ?? (trip && linkedItinerary?.day.date ? tripDayNumber(trip, linkedItinerary.day.date) : null)
+  const itineraryHref =
+    trip?.id && linkedItinerary?.day.date
+      ? `/trips/${trip.id}?tab=itinerary&item=${linkedItinerary.item.id}&date=${linkedItinerary.day.date}`
+      : ''
+  const expenseHref = trip?.id && linkedExpense ? `/trips/${trip.id}?tab=expenses` : ''
 
   const rows = [
     ['Type', BOOKING_TYPE_LABEL[booking.type]],
@@ -226,11 +239,11 @@ function BookingDetailsSheet({
 
   return (
     <Sheet kicker={BOOKING_TYPE_LABEL[booking.type]} title={booking.title} onClose={onClose}>
-      <dl className="space-y-3">
+      <dl className="space-y-4">
         {rows.map(([label, value]) => (
           <div key={label}>
-            <dt className="text-[11px] tracking-[0.12em] text-ink-subtle uppercase">{label}</dt>
-            <dd className="mt-1 text-sm text-ink">{value}</dd>
+            <dt className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">{label}</dt>
+            <dd className="mt-1.5 text-[15px] text-ink">{value}</dd>
           </div>
         ))}
       </dl>
@@ -241,60 +254,97 @@ function BookingDetailsSheet({
             .join(' – ')}
         </p>
       ) : null}
-      {booking.notes ? <p className="mt-5 text-sm leading-relaxed text-ink-muted">{booking.notes}</p> : null}
+      {booking.notes ? <p className="mt-6 text-[14px] leading-relaxed text-ink-muted">{booking.notes}</p> : null}
+
+      {itineraryHref || expenseHref ? (
+        <div className="mt-4 flex flex-wrap items-center gap-x-5">
+          {itineraryHref ? (
+            <Link
+              to={itineraryHref}
+              onClick={onClose}
+              className="inline-flex min-h-11 items-center text-[13px] text-accent hover:text-accent-hover"
+            >
+              Itinerary · Day {dayNumber}
+            </Link>
+          ) : null}
+          {expenseHref ? (
+            <Link
+              to={expenseHref}
+              onClick={onClose}
+              className="inline-flex min-h-11 items-center text-[13px] text-ink-subtle hover:text-ink"
+            >
+              Expense
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
 
       {booking.documents?.length ? (
         <div className="mt-6">
-          <p className="text-[11px] tracking-[0.12em] text-ink-subtle uppercase">Documents</p>
-          <ul className="mt-2 divide-y divide-line border-y border-line">
+          <p className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">Documents</p>
+          <ul className="mt-2">
             {booking.documents.map((doc) => (
-              <li key={doc.id} className="flex items-center justify-between py-2.5 text-sm">
+              <li key={doc.id} className="flex min-h-11 items-center justify-between gap-3 text-sm">
                 <span className="text-ink">{doc.name}</span>
-                <span className="text-[12px] text-ink-subtle">Attached</span>
+                {doc.url ? (
+                  <a
+                    href={doc.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[13px] text-accent hover:text-accent-hover"
+                  >
+                    Open
+                  </a>
+                ) : (
+                  <span className="text-[12px] text-ink-subtle">Attached</span>
+                )}
               </li>
             ))}
           </ul>
         </div>
       ) : null}
 
-      {action === 'itinerary' ? (
+      {action === 'itinerary' || action === 'move' ? (
         <ScheduleBookingForm
           trip={trip}
           days={days}
-          defaultDate={bookingItineraryDate(booking, trip)}
-          defaultTime={booking.startTime || ''}
+          defaultDate={linkedItinerary?.day.date || bookingItineraryDate(booking, trip)}
+          defaultTime={linkedItinerary?.item.time || booking.startTime || ''}
+          submitLabel={action === 'move' ? 'Move' : 'Add to itinerary'}
           onCancel={() => setAction(null)}
           onSubmit={onAddToItinerary}
         />
       ) : (
         <div className="mt-8 space-y-2">
-          {canSchedule ? (
-            <Button className="w-full" variant="outline" onClick={() => setAction('itinerary')}>
+          {canSchedule && !linkedItinerary ? (
+            <Button className="w-full min-h-11" variant="outline" onClick={() => setAction('itinerary')}>
               Add to itinerary
             </Button>
           ) : null}
+          {canSchedule && linkedItinerary ? (
+            <Button className="w-full min-h-11" variant="outline" onClick={() => setAction('move')}>
+              Move to another day
+            </Button>
+          ) : null}
           {canExpense ? (
-            <Button className="w-full" variant="outline" onClick={onAddExpense}>
+            <Button className="w-full min-h-11" variant="outline" onClick={onAddExpense}>
               Add to expenses
             </Button>
           ) : null}
-          {linkedExpense ? (
-            <p className="py-2 text-center text-[13px] text-ink-subtle">Already on expenses</p>
-          ) : null}
           {canMutate ? (
-            <Button className="w-full" variant="outline" onClick={onEdit}>
+            <Button className="w-full min-h-11" variant="outline" onClick={onEdit}>
               Edit
             </Button>
           ) : null}
           {canRemove ? (
             confirmDelete ? (
-              <Button className="w-full" onClick={onDelete}>
+              <Button className="w-full min-h-11" onClick={onDelete}>
                 Confirm delete
               </Button>
             ) : (
               <button
                 type="button"
-                className="flex h-10 w-full items-center justify-center text-sm text-ink-subtle"
+                className="flex min-h-11 w-full items-center justify-center text-sm text-ink-subtle hover:text-ink"
                 onClick={() => setConfirmDelete(true)}
               >
                 Delete
@@ -307,7 +357,7 @@ function BookingDetailsSheet({
   )
 }
 
-function ScheduleBookingForm({ trip, days, defaultDate, defaultTime, onCancel, onSubmit }) {
+function ScheduleBookingForm({ trip, days, defaultDate, defaultTime, submitLabel = 'Add to itinerary', onCancel, onSubmit }) {
   const [date, setDate] = useState(defaultDate || days[0] || '')
   const [time, setTime] = useState(defaultTime || '')
 
@@ -336,7 +386,7 @@ function ScheduleBookingForm({ trip, days, defaultDate, defaultTime, onCancel, o
         <button type="button" className="text-sm text-ink-muted" onClick={onCancel}>
           Cancel
         </button>
-        <Button type="submit">Add to itinerary</Button>
+        <Button type="submit">{submitLabel}</Button>
       </div>
     </form>
   )

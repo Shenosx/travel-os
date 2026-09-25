@@ -160,10 +160,10 @@ export function PeoplePanel({ trip, members, currentUserId }) {
             })}
           </ul>
           {members.length === 1 && !pending.length ? (
-            <div className="mt-6 border-t border-line pt-6 text-center">
-              <p className="text-sm text-ink-muted">No one else on this trip yet</p>
+            <div className="mt-6 border-t border-line pt-6">
+              <p className="text-sm text-ink-muted">This trip is just yours.</p>
               <p className="mt-1 text-[13px] text-ink-subtle">
-                Invite someone to share the days, places, and spending.
+                Invite someone when you want to share the days, places, and spending.
               </p>
               {permissions.canInvite ? (
                 <button type="button" className="mt-4 text-sm text-accent" onClick={() => setInviteOpen(true)}>

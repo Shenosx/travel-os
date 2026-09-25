@@ -4,8 +4,12 @@ import { createSeedSnapshot } from './seed.js'
 import {
   STORAGE_KEY,
   STORAGE_VERSION,
+  canPersistLocalSnapshot,
+  createEmptyAccountSnapshot,
   createPendingOperation,
+  getUserStorageKey,
   loadSnapshot,
+  loadSnapshotForAuthUser,
   saveSnapshot,
 } from './storage.js'
 import { getBalances, getExpenseActorIds, getSettlements } from '../lib/expenses.js'
@@ -480,4 +484,86 @@ test('pendingOps persist the Cloud user stamp without secrets', () => {
   const loaded = reload()
   assert.equal(loaded.pendingOps[0].authUserId, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
   assert.equal(Object.hasOwn(loaded.pendingOps[0].payload, 'access_token'), false)
+})
+
+test('different Supabase user IDs use different storage keys', () => {
+  const userA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const userB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  assert.equal(getUserStorageKey(null), STORAGE_KEY)
+  assert.equal(getUserStorageKey(undefined), STORAGE_KEY)
+  assert.equal(getUserStorageKey(userA), 'travel-os:data:v1:user:aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')
+  assert.equal(getUserStorageKey(userB), 'travel-os:data:v1:user:bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')
+  assert.notEqual(getUserStorageKey(userA), getUserStorageKey(userB))
+  assert.notEqual(getUserStorageKey(userA), STORAGE_KEY)
+})
+
+test('a new account with no key starts empty instead of the Vienna/Tokyo seed', () => {
+  installStorage()
+  const userA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const { key, snapshot } = loadSnapshotForAuthUser(userA)
+  assert.equal(key, getUserStorageKey(userA))
+  assert.equal(snapshot.trips.length, 0)
+  assert.equal(snapshot.expenses.length, 0)
+  assert.equal(snapshot.notes.length, 0)
+  assert.equal(snapshot.trips.some((trip) => trip.id === 'trip-vienna' || trip.id === 'trip-tokyo'), false)
+  assert.ok(snapshot.users.length)
+  assert.equal(createEmptyAccountSnapshot().trips.length, 0)
+})
+
+test('account A data does not appear in account B and persist is blocked until B is hydrated', () => {
+  const map = installStorage()
+  const userA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const userB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  const keyA = getUserStorageKey(userA)
+  const keyB = getUserStorageKey(userB)
+  const snapshotA = {
+    ...createEmptyAccountSnapshot(),
+    trips: [{ id: 'trip-from-a', city: 'Lisbon', members: [{ userId: 'user-jamie' }] }],
+  }
+  saveSnapshot(snapshotA, keyA)
+
+  assert.equal(
+    canPersistLocalSnapshot({
+      authLoading: false,
+      hydratedKey: keyA,
+      accountStorageKey: keyB,
+    }),
+    false,
+  )
+
+  const loadedB = loadSnapshotForAuthUser(userB).snapshot
+  assert.equal(loadedB.trips.length, 0)
+  assert.equal(canPersistLocalSnapshot({ authLoading: false, hydratedKey: keyB, accountStorageKey: keyB }), true)
+  saveSnapshot(loadedB, keyB)
+
+  assert.equal(JSON.parse(map.get(keyA)).trips[0].id, 'trip-from-a')
+  assert.equal(JSON.parse(map.get(keyB)).trips.length, 0)
+  assert.equal(loadSnapshotForAuthUser(userA).snapshot.trips[0].id, 'trip-from-a')
+  assert.equal(loadSnapshotForAuthUser(userB).snapshot.trips.length, 0)
+})
+
+test('guest legacy data remains isolated from account snapshots', () => {
+  const map = installStorage()
+  const userA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+  const guest = createSeedSnapshot()
+  saveSnapshot(guest, STORAGE_KEY)
+  const account = loadSnapshotForAuthUser(userA).snapshot
+  saveSnapshot(account, getUserStorageKey(userA))
+
+  const reloadedGuest = loadSnapshot(createSeedSnapshot(), STORAGE_KEY)
+  assert.ok(reloadedGuest.trips.some((trip) => trip.id === 'trip-vienna'))
+  assert.ok(reloadedGuest.trips.some((trip) => trip.id === 'trip-tokyo'))
+  assert.equal(loadSnapshotForAuthUser(userA).snapshot.trips.length, 0)
+  assert.equal(JSON.parse(map.get(STORAGE_KEY)).trips.some((trip) => trip.id === 'trip-vienna'), true)
+
+  assert.equal(canPersistLocalSnapshot({ authLoading: true, hydratedKey: STORAGE_KEY, accountStorageKey: STORAGE_KEY }), false)
+  assert.equal(canPersistLocalSnapshot({ authLoading: false, hydratedKey: null, accountStorageKey: STORAGE_KEY }), false)
+  assert.equal(
+    canPersistLocalSnapshot({
+      authLoading: false,
+      hydratedKey: getUserStorageKey(userA),
+      accountStorageKey: STORAGE_KEY,
+    }),
+    false,
+  )
 })

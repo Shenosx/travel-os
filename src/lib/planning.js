@@ -538,6 +538,37 @@ export function deleteNote(notes, noteId, userId) {
   return { notes: notes.filter((row) => row.id !== noteId), ok: true }
 }
 
+/** Same trip + user filter as packing and checklist. */
+export function notesForTripUser(rows, tripId, userId) {
+  return packingRowsForTripUser(rows, tripId, userId)
+}
+
+/** Dated notes first, newest date then newest createdAt. Undated last. Not stored. */
+export function sortNotes(notes) {
+  return [...(notes ?? [])].sort((a, b) => {
+    if (a.date && b.date && a.date !== b.date) return b.date.localeCompare(a.date)
+    if (a.date && !b.date) return -1
+    if (!a.date && b.date) return 1
+    return String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''))
+  })
+}
+
+export function groupNotesByDate(notes) {
+  const groups = []
+  const index = new Map()
+  for (const note of sortNotes(notes)) {
+    const key = note.date || ''
+    let group = index.get(key)
+    if (!group) {
+      group = { date: note.date || null, notes: [] }
+      index.set(key, group)
+      groups.push(group)
+    }
+    group.notes.push(note)
+  }
+  return groups
+}
+
 export function createMemory(memories, input, options = {}) {
   const tripId = input?.tripId
   const userId = input?.userId

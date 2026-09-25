@@ -99,7 +99,7 @@ export function ItineraryWeekView({
                 onKeyDown={(event) => onCellKeyDown(event, cellIndex)}
                 className={`flex min-h-11 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-0.5 py-1 ${
                   selectedCell
-                    ? 'bg-accent-soft text-accent ring-1 ring-inset ring-accent'
+                    ? 'bg-accent-soft text-ink'
                     : tripCell
                       ? 'bg-canvas-muted text-ink'
                       : 'text-ink-subtle'
@@ -143,7 +143,7 @@ export function ItineraryWeekView({
                 aria-selected={selectedCell}
                 className={`min-w-0 rounded-md px-2 py-2 ${
                   selectedCell
-                    ? 'bg-accent-soft ring-1 ring-inset ring-accent'
+                    ? 'bg-accent-soft'
                     : tripCell
                       ? 'bg-canvas-muted'
                       : ''

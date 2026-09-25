@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAppData } from '../../hooks/useAppData.jsx'
 import { formatQuietDate, tripDates, tripDayNumber } from '../../lib/dates.js'
 import { canOnTrip } from '../../lib/permissions.js'
@@ -206,26 +206,54 @@ function PlaceDetailsSheet({
     ['Status', PLACE_STATUS_LABEL[place.status]],
   ].filter(([, value]) => value)
 
+  const itineraryHref =
+    trip?.id && schedule.date
+      ? `/trips/${trip.id}?tab=itinerary&place=${place.id}&date=${schedule.date}`
+      : ''
+  const mapHref = trip?.id ? `/trips/${trip.id}?tab=map&place=${place.id}` : ''
+
   return (
-    <Sheet kicker="Place" title={place.name} onClose={onClose}>
-      <dl className="space-y-3">
+    <Sheet kicker={PLACE_STATUS_LABEL[place.status] ?? 'Place'} title={place.name} onClose={onClose}>
+      <dl className="space-y-4">
         {rows.map(([label, value]) => (
           <div key={label}>
-            <dt className="text-[11px] tracking-[0.12em] text-ink-subtle uppercase">{label}</dt>
-            <dd className="mt-1 text-sm text-ink">{value}</dd>
+            <dt className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">{label}</dt>
+            <dd className="mt-1.5 text-[15px] text-ink">{value}</dd>
           </div>
         ))}
       </dl>
-      {place.notes ? <p className="mt-5 text-sm leading-relaxed text-ink-muted">{place.notes}</p> : null}
-      {place.website ? (
-        <a
-          href={place.website}
-          target="_blank"
-          rel="noreferrer"
-          className="mt-4 inline-block text-sm text-accent"
-        >
-          Website
-        </a>
+      {place.notes ? <p className="mt-6 text-[14px] leading-relaxed text-ink-muted">{place.notes}</p> : null}
+      {place.website || itineraryHref || mapHref ? (
+        <div className="mt-4 flex flex-wrap items-center gap-x-5">
+          {itineraryHref ? (
+            <Link
+              to={itineraryHref}
+              onClick={onClose}
+              className="inline-flex min-h-11 items-center text-[13px] text-accent hover:text-accent-hover"
+            >
+              Itinerary · {schedule.label || 'Open'}
+            </Link>
+          ) : null}
+          {mapHref ? (
+            <Link
+              to={mapHref}
+              onClick={onClose}
+              className="inline-flex min-h-11 items-center text-[13px] text-ink-subtle hover:text-ink"
+            >
+              Map
+            </Link>
+          ) : null}
+          {place.website ? (
+            <a
+              href={place.website}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-11 items-center text-[13px] text-ink-subtle hover:text-ink"
+            >
+              Website
+            </a>
+          ) : null}
+        </div>
       ) : null}
 
       {action === 'add' || action === 'move' ? (
@@ -244,34 +272,34 @@ function PlaceDetailsSheet({
       ) : (
         <div className="mt-8 space-y-2">
           {canSchedule ? (
-            <Button className="w-full" variant="outline" onClick={() => setAction('add')}>
+            <Button className="w-full min-h-11" variant="outline" onClick={() => setAction('add')}>
               Add to itinerary
             </Button>
           ) : null}
           {canSchedule && schedule.item ? (
-            <Button className="w-full" variant="outline" onClick={() => setAction('move')}>
+            <Button className="w-full min-h-11" variant="outline" onClick={() => setAction('move')}>
               Move to another day
             </Button>
           ) : null}
           {canMutate && place.status !== 'visited' ? (
-            <Button className="w-full" variant="outline" onClick={onVisited}>
+            <Button className="w-full min-h-11" variant="outline" onClick={onVisited}>
               Mark as visited
             </Button>
           ) : null}
           {canMutate ? (
-            <Button className="w-full" variant="outline" onClick={onEdit}>
+            <Button className="w-full min-h-11" variant="outline" onClick={onEdit}>
               Edit
             </Button>
           ) : null}
           {canRemove ? (
             confirmDelete ? (
-              <Button className="w-full" onClick={onDelete}>
+              <Button className="w-full min-h-11" onClick={onDelete}>
                 Confirm delete
               </Button>
             ) : (
               <button
                 type="button"
-                className="flex h-10 w-full items-center justify-center text-sm text-ink-subtle"
+                className="flex min-h-11 w-full items-center justify-center text-sm text-ink-subtle hover:text-ink"
                 onClick={() => setConfirmDelete(true)}
               >
                 Delete

@@ -38,6 +38,9 @@ import {
   seedDefaultPackingCategories,
   sortByChecklistOrder,
   sortByPackingOrder,
+  sortNotes,
+  groupNotesByDate,
+  notesForTripUser,
   toggleChecklistItemDone,
   toggleCollapsedIds,
   togglePackingItemPacked,
@@ -1189,5 +1192,109 @@ test('checklist completion does not change packing packed state', () => {
   const stillPacked = togglePackingItemPacked(packed.items, 'pitem-coat', JAMIE, NOW)
   assert.equal(stillPacked.item.packed, true)
   assert.equal(toggled.items[0].done, true)
+})
+
+test('notes list is empty for a trip with no personal notes', () => {
+  assert.deepEqual(notesForTripUser([], VIENNA, JAMIE), [])
+  assert.deepEqual(groupNotesByDate([]), [])
+})
+
+test('add note with optional title and required body', () => {
+  const created = createNote(
+    [],
+    { tripId: VIENNA, userId: JAMIE, title: '  Cafe  ', body: '  Quiet street  ' },
+    { now: NOW, id: 'note-ui-1' },
+  )
+  assert.equal(created.note.title, 'Cafe')
+  assert.equal(created.note.body, 'Quiet street')
+  assert.equal(created.note.date, null)
+  assert.equal(notesForTripUser(created.notes, VIENNA, JAMIE).length, 1)
+})
+
+test('notes reject an empty body and keep optional date null or YYYY-MM-DD', () => {
+  assert.equal(createNote([], { tripId: VIENNA, userId: JAMIE, title: 'Nope', body: '   ' }, { now: NOW }).note, null)
+  const dated = createNote(
+    [],
+    { tripId: VIENNA, userId: JAMIE, body: 'Markets', date: '2026-12-13' },
+    { now: NOW, id: 'note-date' },
+  )
+  assert.equal(dated.note.date, '2026-12-13')
+  assert.equal(
+    createNote([], { tripId: VIENNA, userId: JAMIE, body: 'Markets', date: '13/12/2026' }, { now: NOW }).note,
+    null,
+  )
+})
+
+test('edit note and delete note through existing APIs', () => {
+  const created = createNote(
+    [],
+    { tripId: VIENNA, userId: JAMIE, title: 'Draft', body: 'First' },
+    { now: NOW, id: 'note-edit' },
+  )
+  const updated = updateNote(created.notes, 'note-edit', JAMIE, { title: 'Final', body: 'Second', date: '2026-12-14' }, NOW)
+  assert.equal(updated.note.title, 'Final')
+  assert.equal(updated.note.body, 'Second')
+  assert.equal(updated.note.date, '2026-12-14')
+  const deleted = deleteNote(updated.notes, 'note-edit', JAMIE)
+  assert.equal(deleted.ok, true)
+  assert.equal(notesForTripUser(deleted.notes, VIENNA, JAMIE).length, 0)
+})
+
+test('notes are isolated by trip and user, including trip switches', () => {
+  const vienna = createNote(
+    [],
+    { tripId: VIENNA, userId: JAMIE, body: 'Vienna only' },
+    { now: NOW, id: 'note-vie' },
+  )
+  const both = createNote(
+    vienna.notes,
+    { tripId: TOKYO, userId: JAMIE, body: 'Tokyo only' },
+    { now: NOW, id: 'note-tyo' },
+  )
+  const alex = createNote(
+    both.notes,
+    { tripId: VIENNA, userId: ALEX, body: 'Alex only' },
+    { now: NOW, id: 'note-alex' },
+  )
+  assert.deepEqual(notesForTripUser(alex.notes, VIENNA, JAMIE).map((row) => row.id), ['note-vie'])
+  assert.deepEqual(notesForTripUser(alex.notes, TOKYO, JAMIE).map((row) => row.id), ['note-tyo'])
+  assert.deepEqual(notesForTripUser(alex.notes, VIENNA, ALEX).map((row) => row.id), ['note-alex'])
+  assert.equal(personalRowsForUser(alex.notes, ALEX).every((row) => row.userId === ALEX), true)
+})
+
+test('multiple notes on the same date sort together without affecting packing or checklist', () => {
+  const packing = seedDefaultPackingCategories([], VIENNA, JAMIE, { now: NOW })
+  const clothing = sortByPackingOrder(packing.categories)[0]
+  const packed = createPackingItem(
+    [],
+    packing.categories,
+    { tripId: VIENNA, userId: JAMIE, categoryId: clothing.id, name: 'Coat' },
+    { now: NOW, id: 'pitem-notes' },
+  )
+  const checklist = seedDefaultChecklistCategories([], VIENNA, JAMIE, { now: NOW })
+  const first = createNote(
+    [],
+    { tripId: VIENNA, userId: JAMIE, body: 'Morning', date: '2026-12-13' },
+    { now: '2026-09-17T15:00:00.000Z', id: 'note-am' },
+  )
+  const second = createNote(
+    first.notes,
+    { tripId: VIENNA, userId: JAMIE, body: 'Evening', date: '2026-12-13' },
+    { now: '2026-09-17T16:00:00.000Z', id: 'note-pm' },
+  )
+  const undated = createNote(
+    second.notes,
+    { tripId: VIENNA, userId: JAMIE, body: 'Later' },
+    { now: '2026-09-17T17:00:00.000Z', id: 'note-later' },
+  )
+  const sorted = sortNotes(undated.notes)
+  assert.deepEqual(sorted.map((row) => row.id), ['note-pm', 'note-am', 'note-later'])
+  const groups = groupNotesByDate(undated.notes)
+  assert.equal(groups.length, 2)
+  assert.equal(groups[0].date, '2026-12-13')
+  assert.equal(groups[0].notes.length, 2)
+  assert.equal(groups[1].date, null)
+  assert.deepEqual(packingProgress(packed.items), { packed: 0, total: 1 })
+  assert.equal(checklistRowsForTripUser(checklist.categories, VIENNA, JAMIE).length, 9)
 })
 

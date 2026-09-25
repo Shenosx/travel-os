@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  authUserFromSession,
   displayIdentity,
   fetchOwnProfile,
   formatAuthError,
@@ -8,9 +9,56 @@ import {
   isEmailConfirmationPending,
   mapAuthUser,
 } from './session.js'
+import { getUserStorageKey } from '../../data/storage.js'
+
+function jwtWith(payload) {
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
+  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode(payload)}.sig`
+}
 
 test('mapAuthUser returns null without a user', () => {
   assert.equal(mapAuthUser(null), null)
+})
+
+test('authUserFromSession reads session.user when it has an id', () => {
+  const user = { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', email: 'jamie@travelos.app' }
+  assert.equal(authUserFromSession({ user }).id, user.id)
+})
+
+test('authUserFromSession recovers the auth id from a session that has no user', () => {
+  const id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  const session = {
+    access_token: jwtWith({ sub: id, email: 'new@travelos.app' }),
+    refresh_token: 'refresh',
+    expires_at: 4102444800,
+  }
+  const user = authUserFromSession(session)
+  assert.equal(user.id, id)
+  assert.equal(user.email, 'new@travelos.app')
+  assert.equal(getUserStorageKey(user.id), `travel-os:data:v1:user:${id}`)
+})
+
+test('authUserFromSession ignores the supabase user-not-available proxy and uses the JWT', () => {
+  const id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+  const proxy = new Proxy(
+    {},
+    {
+      get(_target, prop) {
+        if (prop === '__isUserNotAvailableProxy') return true
+        throw new Error(`must not read ${String(prop)} on the proxy`)
+      },
+    },
+  )
+  const user = authUserFromSession({
+    access_token: jwtWith({ sub: id, email: 'proxy@travelos.app' }),
+    user: proxy,
+  })
+  assert.equal(user.id, id)
+})
+
+test('authUserFromSession is null without a user or token subject', () => {
+  assert.equal(authUserFromSession(null), null)
+  assert.equal(authUserFromSession({ access_token: 'not-a-jwt' }), null)
 })
 
 test('mapAuthUser reads identity from auth.users, not a client-supplied id', () => {

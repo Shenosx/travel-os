@@ -1,12 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import {
+  authUserFromSession,
   displayIdentity,
   fetchOwnProfileWithRetry,
   formatAuthError,
   isEmailConfirmationPending,
   mapAuthUser,
 } from '../lib/auth/session.js'
-import { getSupabaseClient } from '../lib/supabase/client.js'
+import { AUTH_STORAGE_KEY, getSupabaseClient } from '../lib/supabase/client.js'
 import { getSupabaseConfig } from '../lib/supabase/env.js'
 
 const AuthContext = createContext(null)
@@ -27,19 +28,49 @@ function isConfigured() {
   }
 }
 
+function sessionWithUser(session, user) {
+  if (!session) return user ? { user } : null
+  if (!user) return session
+  return { ...session, user }
+}
+
+function sanitizeSession(nextSession) {
+  if (!nextSession) return null
+  const resolved = authUserFromSession(nextSession)
+  if (nextSession.user?.__isUserNotAvailableProxy) {
+    return { ...nextSession, user: resolved ?? undefined }
+  }
+  if (!nextSession.user && resolved) return { ...nextSession, user: resolved }
+  return nextSession
+}
+
+function readPersistedAuthSession() {
+  try {
+    if (typeof localStorage === 'undefined') return null
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return null
+    if (typeof parsed.access_token !== 'string' && !parsed.user) return null
+    return sanitizeSession(parsed)
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }) {
   const configured = isConfigured()
-  const [session, setSession] = useState(null)
-  const [user, setUser] = useState(null)
+  const [session, setSession] = useState(readPersistedAuthSession)
   const [profile, setProfile] = useState(null)
   const [profileStatus, setProfileStatus] = useState('idle')
-  const [loading, setLoading] = useState(configured)
+  const [loading, setLoading] = useState(() => configured && !readPersistedAuthSession())
   const [pendingConfirmationEmail, setPendingConfirmationEmail] = useState('')
+  const user = authUserFromSession(session)
 
   const applySession = useCallback((nextSession) => {
-    setSession(nextSession ?? null)
-    setUser(nextSession?.user ?? null)
-    if (!nextSession?.user) {
+    const resolved = sanitizeSession(nextSession)
+    setSession(resolved)
+    if (!authUserFromSession(resolved)) {
       setProfile(null)
       setProfileStatus('idle')
     }
@@ -47,20 +78,41 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     const supabase = getSupabaseClient()
-    if (!supabase) return undefined
+    if (!supabase) {
+      setLoading(false)
+      return undefined
+    }
 
     let cancelled = false
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (cancelled) return
-      applySession(data.session)
-      setLoading(false)
-    })
+    function resolveAndApply(nextSession) {
+      applySession(sanitizeSession(nextSession))
+      if (nextSession && !authUserFromSession(nextSession)) {
+        supabase.auth
+          .getUser()
+          .then(({ data }) => {
+            if (cancelled || !data.user) return
+            applySession(sessionWithUser(nextSession, data.user))
+          })
+          .catch(() => {})
+      }
+    }
+
+    supabase.auth
+      .getSession()
+      .then(({ data }) => {
+        if (cancelled) return
+        resolveAndApply(data.session)
+        setLoading(false)
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false)
+      })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      applySession(nextSession)
+      resolveAndApply(nextSession)
       setLoading(false)
     })
 
@@ -108,27 +160,34 @@ export function AuthProvider({ children }) {
       return { ok: true, needsConfirmation: true }
     }
 
+    applySession(sessionWithUser(data.session, data.user))
     setPendingConfirmationEmail('')
+    setLoading(false)
     return { ok: true, needsConfirmation: false }
-  }, [])
+  }, [applySession])
 
   const signIn = useCallback(async ({ email, password }) => {
     const supabase = getSupabaseClient()
     if (!supabase) return { ok: false, error: 'Cloud account is not configured.' }
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     })
 
     if (error) return { ok: false, error: formatAuthError(error) }
+    applySession(sessionWithUser(data.session, data.user))
     setPendingConfirmationEmail('')
+    setLoading(false)
     return { ok: true }
-  }, [])
+  }, [applySession])
 
   const signOut = useCallback(async () => {
     const supabase = getSupabaseClient()
-    if (!supabase) return { ok: true }
+    if (!supabase) {
+      applySession(null)
+      return { ok: true }
+    }
     const { error } = await supabase.auth.signOut()
     if (error) return { ok: false, error: formatAuthError(error) }
     applySession(null)

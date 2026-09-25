@@ -1,7 +1,14 @@
+import { useAuth } from './useAuth.jsx'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { authUserFromSession } from '../lib/auth/session.js'
 import { getUserById, CURRENT_USER_ID } from '../data/mock.js'
-import { createSeedSnapshot } from '../data/seed.js'
-import { loadSnapshot, saveSnapshot } from '../data/storage.js'
+import {
+  canPersistLocalSnapshot,
+  createEmptyAccountSnapshot,
+  getUserStorageKey,
+  loadSnapshotForAuthUser,
+  saveSnapshot,
+} from '../data/storage.js'
 import {
   acceptInvitation as applyAcceptInvitation,
   acceptInvitationAsInvitee,
@@ -103,7 +110,14 @@ function isTripVisible(trip, user, invitations) {
 }
 
 export function AppDataProvider({ children }) {
-  const [boot] = useState(() => loadSnapshot(createSeedSnapshot()))
+  const { user: authUser, session, loading: authLoading } = useAuth()
+  const cloudUserId = authUser?.id ?? authUserFromSession(session)?.id ?? null
+  const accountStorageKey = getUserStorageKey(cloudUserId)
+  const [hydratedKey, setHydratedKey] = useState(() => (authLoading ? null : accountStorageKey))
+  const [boot] = useState(() =>
+    authLoading ? createEmptyAccountSnapshot() : loadSnapshotForAuthUser(cloudUserId).snapshot,
+  )
+
   const [users, setUsers] = useState(() => boot.users)
   const [trips, setTrips] = useState(() => boot.trips)
   const [expenses, setExpenses] = useState(() => boot.expenses)
@@ -123,27 +137,59 @@ export function AppDataProvider({ children }) {
   const [memories, setMemories] = useState(() => boot.memories ?? [])
   const [sessionUserId, setSessionUserIdState] = useState(readSessionUserId)
 
+  // Load the destination snapshot during render so persist never sees
+  // account A's collections with account B's (or a new user's) storage key.
+  if (!authLoading && hydratedKey !== accountStorageKey) {
+    const snapshot = loadSnapshotForAuthUser(cloudUserId).snapshot
+    setHydratedKey(accountStorageKey)
+    setUsers(snapshot.users ?? [])
+    setTrips(snapshot.trips ?? [])
+    setExpenses(snapshot.expenses ?? [])
+    setItineraries(snapshot.itineraries ?? [])
+    setPlaces(snapshot.places ?? [])
+    setBookings(snapshot.bookings ?? [])
+    setInvitations(snapshot.invitations ?? [])
+    setActivities(snapshot.activities ?? [])
+    setPolls(snapshot.polls ?? [])
+    setPendingOps(snapshot.pendingOps ?? [])
+    setTripMigrations(snapshot.tripMigrations ?? [])
+    setPackingCategories(snapshot.packingCategories ?? [])
+    setPackingItems(snapshot.packingItems ?? [])
+    setChecklistCategories(snapshot.checklistCategories ?? [])
+    setChecklistItems(snapshot.checklistItems ?? [])
+    setNotes(snapshot.notes ?? [])
+    setMemories(snapshot.memories ?? [])
+  }
+
   useEffect(() => {
-    saveSnapshot({
-      users,
-      trips,
-      expenses,
-      itineraries,
-      places,
-      bookings,
-      invitations,
-      activities,
-      polls,
-      pendingOps,
-      tripMigrations,
-      packingCategories,
-      packingItems,
-      checklistCategories,
-      checklistItems,
-      notes,
-      memories,
-    })
+    if (!canPersistLocalSnapshot({ authLoading, hydratedKey, accountStorageKey })) return
+
+    saveSnapshot(
+      {
+        users,
+        trips,
+        expenses,
+        itineraries,
+        places,
+        bookings,
+        invitations,
+        activities,
+        polls,
+        pendingOps,
+        tripMigrations,
+        packingCategories,
+        packingItems,
+        checklistCategories,
+        checklistItems,
+        notes,
+        memories,
+      },
+      accountStorageKey,
+    )
   }, [
+    authLoading,
+    hydratedKey,
+    accountStorageKey,
     users,
     trips,
     expenses,

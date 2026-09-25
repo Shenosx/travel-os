@@ -9,9 +9,57 @@
  */
 
 import { sanitizeTripMigration } from '../lib/migration/mappings.js'
+import { createSeedSnapshot } from './seed.js'
 
 export const STORAGE_VERSION = 1
+
 export const STORAGE_KEY = `travel-os:data:v${STORAGE_VERSION}`
+
+export function getUserStorageKey(userId) {
+  if (!userId) return STORAGE_KEY
+
+  return `travel-os:data:v${STORAGE_VERSION}:user:${userId}`
+}
+
+/**
+ * Persist only after auth identity is known and in-memory collections
+ * already belong to that storage key. Prevents writing guest/A data into B.
+ */
+export function canPersistLocalSnapshot({ authLoading, hydratedKey, accountStorageKey }) {
+  return !authLoading && hydratedKey != null && hydratedKey === accountStorageKey
+}
+
+/** New Supabase accounts start with mock users but no local trips/seed destinations. */
+export function createEmptyAccountSnapshot() {
+  const seed = createSeedSnapshot()
+  return {
+    version: STORAGE_VERSION,
+    users: clone(seed.users),
+    trips: [],
+    expenses: [],
+    itineraries: [],
+    places: [],
+    bookings: [],
+    invitations: [],
+    activities: [],
+    polls: [],
+    pendingOps: [],
+    tripMigrations: [],
+    packingCategories: [],
+    packingItems: [],
+    checklistCategories: [],
+    checklistItems: [],
+    notes: [],
+    memories: [],
+  }
+}
+
+/** Load the snapshot for a Supabase auth UUID, or guest seed when signed out. */
+export function loadSnapshotForAuthUser(authUserId) {
+  const key = getUserStorageKey(authUserId)
+  const seed = authUserId ? createEmptyAccountSnapshot() : createSeedSnapshot()
+  return { key, snapshot: loadSnapshot(seed, key) }
+}
 
 const PERSONAL_COLLECTIONS = [
   'packingCategories',
@@ -257,7 +305,7 @@ function sanitizeSnapshot(data, seed) {
  *
  * @param {ReturnType<typeof emptyCollections>} seed
  */
-export function loadSnapshot(seed) {
+export function loadSnapshot(seed, key = STORAGE_KEY) {
   const fallback = {
     version: STORAGE_VERSION,
     ...clone(seed),
@@ -271,7 +319,7 @@ export function loadSnapshot(seed) {
     memories: Array.isArray(seed.memories) ? clone(seed.memories) : [],
   }
 
-  const raw = readRaw(STORAGE_KEY)
+  const raw = readRaw(key)
   if (!raw) return fallback
 
   try {
@@ -288,7 +336,7 @@ export function loadSnapshot(seed) {
 }
 
 /** @param {Record<string, unknown>} snapshot */
-export function saveSnapshot(snapshot) {
+export function saveSnapshot(snapshot, key = STORAGE_KEY) {
   const payload = {
     ...emptyCollections(),
     ...snapshot,
@@ -297,7 +345,7 @@ export function saveSnapshot(snapshot) {
   for (const name of PERSONAL_COLLECTIONS) {
     payload[name] = sanitizePersonal(payload[name])
   }
-  return writeRaw(STORAGE_KEY, JSON.stringify(payload))
+  return writeRaw(key, JSON.stringify(payload))
 }
 
 export function createPendingOperation(entity, action, payload, extra = {}) {

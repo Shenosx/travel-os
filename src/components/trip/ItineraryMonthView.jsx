@@ -144,7 +144,7 @@ export function ItineraryMonthView({
                   onKeyDown={(event) => onCellKeyDown(event, cellIndex)}
                   className={`flex min-h-11 min-w-0 flex-col items-start gap-1 rounded-md px-1 py-1 text-left sm:min-h-[3.25rem] sm:px-1.5 ${
                     selectedCell
-                      ? 'bg-accent-soft text-accent ring-1 ring-inset ring-accent'
+                      ? 'bg-accent-soft text-ink'
                       : tripCell
                         ? 'text-ink'
                         : 'text-ink-subtle'
@@ -188,11 +188,7 @@ function dayLabel(iso, { tripCell, count }) {
 
 export function ItineraryViewSwitcher({ value, onChange }) {
   return (
-    <div
-      role="group"
-      aria-label="Itinerary view"
-      className="inline-flex max-w-full flex-wrap rounded-md border border-line p-[3px]"
-    >
+    <div role="group" aria-label="Itinerary view" className="inline-flex max-w-full flex-wrap gap-1">
       {[
         { id: 'list', label: 'List' },
         { id: 'month', label: 'Month' },
@@ -206,8 +202,8 @@ export function ItineraryViewSwitcher({ value, onChange }) {
             type="button"
             aria-pressed={selected}
             onClick={() => onChange(option.id)}
-            className={`rounded-[5px] px-2 py-1.5 text-[12px] font-medium transition-colors sm:px-2.5 ${
-              selected ? 'bg-accent-soft text-accent' : 'text-ink-subtle hover:text-ink-muted'
+            className={`min-h-10 px-2.5 text-[13px] transition-colors ${
+              selected ? 'text-ink' : 'text-ink-subtle hover:text-ink-muted'
             }`}
           >
             {option.label}
