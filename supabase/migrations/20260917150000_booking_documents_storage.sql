@@ -300,11 +300,12 @@ BEGIN
       created_at timestamptz NOT NULL DEFAULT now(),
       UNIQUE (bucket_id, name)
     );
+    -- Local SQL-test stub only. Hosted storage.objects is owned by
+    -- supabase_storage_admin and already has RLS enabled.
+    ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
   END IF;
 END;
 $$;
-
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
