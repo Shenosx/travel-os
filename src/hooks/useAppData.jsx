@@ -26,6 +26,7 @@ import { nowIso, todayIso } from '../lib/dates.js'
 import { createId } from '../lib/format.js'
 import { normalizePendingOp } from '../lib/sync/pendingOps.js'
 import { sanitizeTripMigration } from '../lib/migration/mappings.js'
+import { isCloudTripId } from '../lib/trips/cloud.js'
 import { clearItineraryRefs, moveItineraryItemRecord, updateItineraryItemRecord } from '../lib/itinerary.js'
 import { HOME_CURRENCY, withConvertedAmount } from '../lib/currency.js'
 import { validateRepayment } from '../lib/repayments.js'
@@ -795,8 +796,14 @@ export function AppDataProvider({ children }) {
         return nextItem
       },
       inviteMember: (tripId, { email, role, status = 'pending' }) => {
+        if (isCloudTripId(tripId)) {
+          return { ok: false, reason: 'This cloud trip uses Cloud invitations.' }
+        }
         const trip = tripById(tripId)
         if (!trip) return { ok: false, reason: 'Trip not found.' }
+        if (trip.source === 'cloud') {
+          return { ok: false, reason: 'This cloud trip uses Cloud invitations.' }
+        }
         const ensured = ensureUserForInvite(users, email)
         const result = upsertInvitation({
           trip,

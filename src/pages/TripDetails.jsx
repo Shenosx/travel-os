@@ -18,6 +18,7 @@ import { Card } from '../components/ui/Card.jsx'
 import { Tabs } from '../components/ui/Tabs.jsx'
 import { useAppData } from '../hooks/useAppData.jsx'
 import { useAuth } from '../hooks/useAuth.jsx'
+import { useCloudTrips } from '../hooks/useCloudTrips.js'
 import { isOpenInvitation, openInvitationsForEmail } from '../lib/collaboration.js'
 import { formatDateRange, resolveSelectedCalendarDate } from '../lib/dates.js'
 import { CALENDAR_VIEWS, ITINERARY_VIEWS } from '../lib/itinerary.js'
@@ -31,6 +32,7 @@ import {
   packingProgress,
   packingRowsForTripUser,
 } from '../lib/planning.js'
+import { resolveCloudInviteTrip, tripUsesCloudInvitations } from '../lib/trips/invitations.js'
 import { describeTripCountdown, getTripSpending, STATUS_LABEL } from '../lib/trips.js'
 
 const TABS = [
@@ -72,6 +74,7 @@ export function TripDetailsPage() {
     upsertTripMigration,
   } = useAppData()
   const { configured, user: cloudUser } = useAuth()
+  const cloud = useCloudTrips()
   const [migrateOpen, setMigrateOpen] = useState(false)
   const trip = trips.find((item) => item.id === tripId)
 
@@ -399,7 +402,19 @@ export function TripDetailsPage() {
           />
         ) : null}
         {tab === 'people' ? (
-          <PeoplePanel trip={trip} members={members} currentUserId={currentUser.id} />
+          <PeoplePanel
+            trip={trip}
+            members={members}
+            currentUserId={currentUser.id}
+            cloudTrip={resolveCloudInviteTrip(trip, {
+              migration: tripMigrations.find((item) => item.localTripId === trip.id) ?? null,
+              cloudTrips: cloud.trips,
+            })}
+            useCloudInvites={tripUsesCloudInvitations(
+              trip,
+              tripMigrations.find((item) => item.localTripId === trip.id) ?? null,
+            )}
+          />
         ) : null}
         {tab === 'insights' ? (
           <TripInsights

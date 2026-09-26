@@ -20,8 +20,10 @@ import {
   normalizeInviteToken,
   prefersCloudJoin,
   readAcceptedTripId,
+  resolveCloudInviteTrip,
   revokeCloudInvitation,
   safeCloudJoinPath,
+  tripUsesCloudInvitations,
 } from './invitations.js'
 import { getCloudTrips } from './cloud.js'
 import { canOnTrip } from '../permissions.js'
@@ -284,6 +286,7 @@ test('cloud invitation code never generates or stores tokens locally', () => {
     'src/lib/trips/invitations.js',
     'src/lib/trips/members.js',
     'src/hooks/useCloudTripPeople.js',
+    'src/components/trips/CloudPeoplePanel.jsx',
     'src/components/trips/CloudPeopleSheet.jsx',
     'src/components/trips/CloudInviteSheet.jsx',
   ]
@@ -304,6 +307,58 @@ test('cloud invitation code never generates or stores tokens locally', () => {
   assert.equal(invitations.includes('.insert('), false)
   assert.equal(invitations.includes('secure_random'), false)
   assert.equal(invitations.includes('sha256'), false)
+})
+
+test('local trip uses local invite; cloud trip uses create_invitation', () => {
+  const details = readFileSync(join(root, 'src/pages/TripDetails.jsx'), 'utf8')
+  assert.match(details, /resolveCloudInviteTrip/)
+  assert.match(details, /tripUsesCloudInvitations/)
+  assert.match(details, /PeoplePanel/)
+
+  const people = readFileSync(join(root, 'src/components/trip/PeoplePanel.jsx'), 'utf8')
+  assert.match(people, /inviteMember/)
+  assert.match(people, /CloudPeoplePanel/)
+  assert.match(people, /tripUsesCloudInvitations/)
+  assert.equal(people.includes('createInviteToken'), false)
+  assert.equal(people.includes('createCloudInvitation'), false)
+
+  const cloudPeople = readFileSync(join(root, 'src/components/trips/CloudPeoplePanel.jsx'), 'utf8')
+  assert.match(cloudPeople, /useCloudTripPeople/)
+  assert.match(cloudPeople, /CloudInviteSheet/)
+  assert.equal(cloudPeople.includes('createInviteToken'), false)
+  assert.equal(cloudPeople.includes('inviteMember'), false)
+
+  const peopleHook = readFileSync(join(root, 'src/hooks/useCloudTripPeople.js'), 'utf8')
+  assert.match(peopleHook, /createCloudInvitation/)
+  assert.match(peopleHook, /inviteCode/)
+  assert.equal(peopleHook.includes('createInviteToken'), false)
+  assert.equal(peopleHook.includes('inviteMember'), false)
+
+  const invitations = readFileSync(join(root, 'src/lib/trips/invitations.js'), 'utf8')
+  assert.match(invitations, /rpc\('create_invitation'/)
+  assert.match(invitations, /\/join\/\$\{encodeURIComponent\(String\(inviteCode/)
+})
+
+test('tripUsesCloudInvitations is true for cloud trips and completed migrations', () => {
+  const cloudTrip = { id: tripId, source: 'cloud', inviteCode: 'lisbon-a1' }
+  const localTrip = { id: 'trip-vienna', source: 'local' }
+  assert.equal(tripUsesCloudInvitations(cloudTrip), true)
+  assert.equal(tripUsesCloudInvitations({ id: tripId }), true)
+  assert.equal(tripUsesCloudInvitations(localTrip), false)
+  assert.equal(tripUsesCloudInvitations(localTrip, { status: 'running', cloudTripId: tripId }), false)
+  assert.equal(tripUsesCloudInvitations(localTrip, { status: 'completed', cloudTripId: tripId }), true)
+
+  const hosted = { id: tripId, inviteCode: 'lisbon-a1', source: 'cloud' }
+  assert.equal(resolveCloudInviteTrip(localTrip, { cloudTrips: [hosted] })?.id, undefined)
+  assert.equal(
+    resolveCloudInviteTrip(localTrip, {
+      migration: { status: 'completed', cloudTripId: tripId },
+      cloudTrips: [hosted],
+    })?.id,
+    tripId,
+  )
+  assert.equal(resolveCloudInviteTrip(cloudTrip, { cloudTrips: [hosted] })?.inviteCode, 'lisbon-a1')
+  assert.match(cloudInviteLink('lisbon-a1', rawToken, 'https://travelos.app'), /\/join\/lisbon-a1\/[0-9a-f]{64}$/)
 })
 
 test('local invitation system remains on the local join path', () => {

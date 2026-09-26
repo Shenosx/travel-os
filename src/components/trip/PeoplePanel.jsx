@@ -6,6 +6,9 @@ import { canChangeMemberRole, canRemoveMember } from '../../lib/permissions.js'
 import { ROLE_LABEL } from '../../lib/people.js'
 import { CURRENT_USER_ID } from '../../data/mock.js'
 import { useAppData } from '../../hooks/useAppData.jsx'
+import { useAuth } from '../../hooks/useAuth.jsx'
+import { tripUsesCloudInvitations } from '../../lib/trips/invitations.js'
+import { CloudPeoplePanel } from '../trips/CloudPeoplePanel.jsx'
 import { IconCopy } from '../icons.jsx'
 import { Avatar } from '../ui/Avatar.jsx'
 import { Button } from '../ui/Button.jsx'
@@ -25,7 +28,16 @@ const INVITE_STATUS = {
   invited: 'Invite link ready',
 }
 
-export function PeoplePanel({ trip, members, currentUserId }) {
+export function PeoplePanel({ trip, members, currentUserId, cloudTrip = null, useCloudInvites = false }) {
+  const { user: cloudUser } = useAuth()
+  if (useCloudInvites || tripUsesCloudInvitations(trip) || cloudTrip) {
+    return <CloudPeoplePanel trip={cloudTrip ?? trip} currentUserId={cloudUser?.id ?? currentUserId} />
+  }
+
+  return <LocalPeoplePanel trip={trip} members={members} currentUserId={currentUserId} />
+}
+
+function LocalPeoplePanel({ trip, members, currentUserId }) {
   const {
     users,
     invitations,

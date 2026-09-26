@@ -61,6 +61,27 @@ test('editors cannot invite people', () => {
   assert.equal(result.ok, false)
 })
 
+test('cloud trip cannot create a local-only invitation', () => {
+  const cloudTrip = {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    source: 'cloud',
+    ownerId: 'user-jamie',
+    inviteCode: 'cloud-aa',
+    members: [{ userId: 'user-jamie', role: 'owner' }],
+  }
+  const result = upsertInvitation({
+    trip: cloudTrip,
+    users,
+    invitations: [],
+    actorId: 'user-jamie',
+    email: 'maya@example.com',
+    role: 'editor',
+  })
+  assert.equal(result.ok, false)
+  assert.match(result.reason, /cloud/i)
+  assert.equal(result.invitation, undefined)
+})
+
 test('cannot invite someone already on the trip', () => {
   const result = upsertInvitation({
     trip: vienna,

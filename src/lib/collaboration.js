@@ -1,6 +1,7 @@
 import { createId } from './format.js'
 import { canChangeMemberRole, canOnTrip, canRemoveMember, getMemberRole } from './permissions.js'
 import { userFromInvite } from './people.js'
+import { isCloudTripId } from './trips/cloud.js'
 
 export function normalizeEmail(value) {
   return String(value ?? '')
@@ -111,6 +112,9 @@ export function openInvitationsForEmail(invitations, email) {
  */
 export function upsertInvitation(input) {
   const { trip, users, invitations, actorId, role } = input
+  if (trip?.source === 'cloud' || isCloudTripId(trip?.id)) {
+    return { ok: false, reason: 'This cloud trip uses Cloud invitations.' }
+  }
   if (!canOnTrip(trip, actorId, 'inviteMembers')) {
     return { ok: false, reason: 'You cannot invite people to this trip.' }
   }

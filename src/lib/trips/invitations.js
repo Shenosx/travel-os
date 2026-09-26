@@ -425,6 +425,23 @@ export function cloudTripWorkspacePath(tripId) {
   return `/trips?cloud=${encodeURIComponent(tripId)}`
 }
 
+/** Cloud UUID, mapped Cloud trip, or completed Local → Cloud migration. */
+export function tripUsesCloudInvitations(trip, migration = null) {
+  if (!trip) return false
+  if (trip.source === 'cloud' || isCloudTripId(trip.id)) return true
+  return migration?.status === 'completed' && isCloudTripId(migration.cloudTripId)
+}
+
+export function resolveCloudInviteTrip(trip, { migration = null, cloudTrips = [] } = {}) {
+  if (!tripUsesCloudInvitations(trip, migration)) return null
+  if (trip.source === 'cloud' || isCloudTripId(trip.id)) {
+    return (cloudTrips ?? []).find((item) => item.id === trip.id) ?? trip
+  }
+  const cloudTripId = migration?.cloudTripId
+  if (!isCloudTripId(cloudTripId)) return null
+  return (cloudTrips ?? []).find((item) => item.id === cloudTripId) ?? null
+}
+
 function mapJoinTrip(data) {
   if (!data) return null
   return {

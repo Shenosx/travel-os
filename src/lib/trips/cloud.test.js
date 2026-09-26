@@ -8,6 +8,7 @@ import {
   CLOUD_TRIP_FORBIDDEN_WRITE_COLUMNS,
   cloudTripInsertPayload,
   cloudTripUpdatePayload,
+  cloudTripWriteDiagnostic,
   cloudTripsForSignedOut,
   createCloudTrip,
   deleteCloudTrip,
@@ -281,6 +282,25 @@ test('create maps database errors to a short user-facing message', async () => {
   assert.equal(result.error, 'That cloud trip could not be created.')
   assert.equal(result.error.includes('XX000'), false)
   assert.equal(result.error.includes('connection unexpectedly'), false)
+})
+
+test('create diagnostic exposes supabase error fields without changing the UI message', async () => {
+  const supabaseError = {
+    message: 'insert or update on table "trips" violates foreign key constraint "trips_owner_id_fkey"',
+    code: '23503',
+    details: 'Key (owner_id)=(00000000-0000-0000-0000-000000000001) is not present in table "profiles".',
+    hint: null,
+  }
+  const client = mockWriteClient({
+    insert: { data: null, error: supabaseError },
+  })
+  const result = await createCloudTrip({ client, session, input: createInput })
+  assert.equal(result.error, 'That cloud trip could not be created.')
+  assert.deepEqual(result.diagnostic, cloudTripWriteDiagnostic(supabaseError, 'create'))
+  assert.equal(result.diagnostic.table, 'trips')
+  assert.equal(result.diagnostic.operation, 'insert')
+  assert.equal(result.diagnostic.error.code, '23503')
+  assert.equal(result.diagnostic.error.hint, null)
 })
 
 test('update returns an error when supabase is not configured', async () => {

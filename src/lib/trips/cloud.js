@@ -121,6 +121,31 @@ function logCloudTripDetail(error) {
   }
 }
 
+/** Temporary create-path diagnostic. Never logs trip notes or invite tokens. */
+export function cloudTripWriteDiagnostic(error, action = 'create') {
+  return {
+    action,
+    table: 'trips',
+    operation: action === 'create' ? 'insert' : action === 'update' ? 'update' : action === 'delete' ? 'delete' : 'select',
+    error: error
+      ? {
+          message: error.message ?? null,
+          code: error.code ?? null,
+          details: error.details ?? null,
+          hint: error.hint ?? null,
+        }
+      : null,
+  }
+}
+
+function logCloudTripWrite(diagnostic) {
+  try {
+    console.info('[cloud trip write]', diagnostic)
+  } catch {
+    /* ignore */
+  }
+}
+
 export function mapCloudTrip(row) {
   if (!row) return null
   return {
@@ -362,6 +387,8 @@ export async function createCloudTrip(args = {}) {
   const { data, error } = await client.from('trips').insert(payload).select(CLOUD_TRIP_COLUMNS).single()
 
   if (error) {
+    const diagnostic = cloudTripWriteDiagnostic(error, 'create')
+    logCloudTripWrite(diagnostic)
     logCloudTripDetail(error)
     const recovered = await recoverDuplicateInsert({
       client,
@@ -370,8 +397,8 @@ export async function createCloudTrip(args = {}) {
       id: args.id,
       error,
     })
-    if (recovered.recovered) return { trip: mapCloudTrip(recovered.data), error: null }
-    return { trip: null, error: formatCloudTripError(error, 'create') }
+    if (recovered.recovered) return { trip: mapCloudTrip(recovered.data), error: null, diagnostic }
+    return { trip: null, error: formatCloudTripError(error, 'create'), diagnostic }
   }
 
   return { trip: mapCloudTrip(data), error: null }
