@@ -1,20 +1,32 @@
 import { useMemo, useState } from 'react'
 import { ExpenseRow } from '../components/expenses/ExpenseRow.jsx'
-import { SettlementPanel } from '../components/expenses/SettlementPanel.jsx'
+import { PaySheet } from '../components/expenses/PaySheet.jsx'
+import { SettlementLedger } from '../components/expenses/SettlementLedger.jsx'
 import { useExpenseComposer } from '../components/expenses/ExpenseComposer.jsx'
 import { ProgressBar } from '../components/ui/ProgressBar.jsx'
 import { EmptyState } from '../components/ui/EmptyState.jsx'
+import { useToast } from '../components/ui/Toast.jsx'
 import { useAppData } from '../hooks/useAppData.jsx'
-import { CATEGORY_LABEL, getBalances, getExpenseActorIds, getExpensesForTrip, getSettlements, getSpendByCategory, getSpendingSummary, getUserSettlement } from '../lib/expenses.js'
+import {
+  CATEGORY_LABEL,
+  getExpensesForTrip,
+  getSpendByCategory,
+  getSpendingSummary,
+} from '../lib/expenses.js'
 import { formatMoney } from '../lib/format.js'
 import { HOME_CURRENCY } from '../lib/currency.js'
 import { peopleForTrip } from '../lib/people.js'
-import { canEditExpense, canOnTrip } from '../lib/permissions.js'
+import { canDeleteRepayment, canEditExpense, canOnTrip } from '../lib/permissions.js'
+import { getMySpending, getOutstandingDebts, getUserOutstanding, isSharedTrip } from '../lib/repayments.js'
 
 export function ExpensesPage() {
-  const { expenses, trips, users, currentUser } = useAppData()
+  const { expenses, repayments, trips, users, currentUser, addRepayment, deleteRepayment, restoreRepayment } =
+    useAppData()
   const { openEdit, openCreate } = useExpenseComposer()
+  const showToast = useToast()
   const [tripFilter, setTripFilter] = useState('all')
+  const [spendView, setSpendView] = useState('everyone')
+  const [payDraft, setPayDraft] = useState(null)
 
   const visible = useMemo(
     () => (tripFilter === 'all' ? expenses : getExpensesForTrip(expenses, tripFilter)),
@@ -25,20 +37,22 @@ export function ExpensesPage() {
     [visible],
   )
   const summary = getSpendingSummary(sorted, currentUser.id)
-  const categories = getSpendByCategory(sorted)
+  const mySpending = getMySpending(sorted, currentUser.id)
+  const categories = spendView === 'mine' ? mySpending.byCategory : getSpendByCategory(sorted)
   const maxCategory = categories[0]?.amount ?? 1
   const selectedTrip = trips.find((trip) => trip.id === tripFilter) ?? null
+  const sharedSelected = isSharedTrip(selectedTrip)
   const canAdd = selectedTrip
     ? canOnTrip(selectedTrip, currentUser.id, 'addExpense')
     : trips.some((trip) => canOnTrip(trip, currentUser.id, 'addExpense'))
 
   const tripPeople = selectedTrip ? peopleForTrip(selectedTrip, sorted, users) : []
-  const actorIds = selectedTrip
-    ? getExpenseActorIds(sorted, selectedTrip.members.map((member) => member.userId))
+  const tripRepayments = selectedTrip
+    ? repayments.filter((item) => item.tripId === selectedTrip.id)
     : []
-  const balances = selectedTrip ? getBalances(sorted, actorIds) : null
-  const transfers = balances ? getSettlements(balances) : []
-  const userSettlement = balances ? getUserSettlement(transfers, currentUser.id) : null
+  const outstanding = selectedTrip
+    ? getUserOutstanding(getOutstandingDebts(sorted, tripRepayments), currentUser.id)
+    : null
 
   function membersForExpense(expense) {
     const trip = trips.find((item) => item.id === expense.tripId)
@@ -51,7 +65,7 @@ export function ExpensesPage() {
         <div>
           <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">Expenses</p>
           <h1 className="font-display mt-2 text-[36px] leading-tight tracking-[-0.04em] sm:text-[44px]">
-            All spending
+            {spendView === 'mine' ? 'My spending' : 'All spending'}
           </h1>
         </div>
         {canAdd ? (
@@ -61,7 +75,8 @@ export function ExpensesPage() {
         ) : null}
       </div>
       <p className="mt-3 max-w-[46ch] text-[15px] text-ink-muted">
-        Original currencies are kept. Totals are shown in {HOME_CURRENCY}. Shares are assigned as exact amounts.
+        Original currencies are kept. Totals are shown in {HOME_CURRENCY}. Repayments settle balances and never add to
+        trip spending.
       </p>
 
       <div className="mt-8 flex flex-wrap gap-2">
@@ -75,28 +90,59 @@ export function ExpensesPage() {
         ))}
       </div>
 
-      <div className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryCard label="Total spent" value={formatMoney(summary.total)} />
-        <SummaryCard label="Your share" value={formatMoney(summary.yourShare)} />
-        <SummaryCard label="Shared" value={formatMoney(summary.shared)} />
-        <SummaryCard label="Personal" value={formatMoney(summary.personal)} />
+      <div className="mt-4 flex flex-wrap gap-2">
+        <FilterChip selected={spendView === 'mine'} onClick={() => setSpendView('mine')}>
+          My spending
+        </FilterChip>
+        <FilterChip selected={spendView === 'everyone'} onClick={() => setSpendView('everyone')}>
+          Everyone
+        </FilterChip>
       </div>
 
-      {selectedTrip && userSettlement ? (
+      <div className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <SummaryCard
+          label={spendView === 'mine' ? 'You paid' : 'Total spent'}
+          value={formatMoney(spendView === 'mine' ? mySpending.total : summary.total)}
+        />
+        <SummaryCard label="Your share" value={formatMoney(summary.yourShare)} />
+        <SummaryCard label="Your paid" value={formatMoney(mySpending.total)} />
+        <SummaryCard
+          label="Your outstanding"
+          value={sharedSelected && outstanding ? formatMoney(outstanding.youOweTotal) : '—'}
+        />
+      </div>
+
+      {sharedSelected ? (
         <div className="mt-10">
-          <SettlementPanel
-            transfers={transfers}
-            userSettlement={userSettlement}
+          <SettlementLedger
+            trip={selectedTrip}
+            expenses={sorted}
+            repayments={tripRepayments}
             members={tripPeople}
             currentUserId={currentUser.id}
             currency={selectedTrip.currency}
+            canPay={canAdd}
+            onPay={setPayDraft}
+            canDeleteRepayment={(item) => canDeleteRepayment(selectedTrip, currentUser.id, item)}
+            onDeleteRepayment={(item) => {
+              const removed = deleteRepayment(item.id)
+              if (removed) {
+                showToast({
+                  message: 'Repayment removed',
+                  actionLabel: 'Undo',
+                  onAction: () => restoreRepayment(removed),
+                })
+              }
+            }}
           />
         </div>
       ) : null}
 
       {categories.length ? (
         <section className="mt-12">
-          <h2 className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">Category breakdown</h2>
+          <h2 className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">
+            {spendView === 'mine' ? 'Your categories' : 'Category breakdown'}
+          </h2>
           <ul className="mt-5 space-y-4">
             {categories.map((item) => (
               <li key={item.category}>
@@ -127,6 +173,8 @@ export function ExpensesPage() {
                     expense={expense}
                     members={membersForExpense(expense)}
                     currentUserId={currentUser.id}
+                    shared={isSharedTrip(trip)}
+                    repayments={repayments.filter((item) => item.tripId === expense.tripId)}
                     onClick={editable ? () => openEdit(expense.id) : undefined}
                   />
                 </li>
@@ -153,6 +201,19 @@ export function ExpensesPage() {
           </div>
         )}
       </section>
+
+      {payDraft && selectedTrip ? (
+        <PaySheet
+          trip={selectedTrip}
+          expenses={sorted}
+          repayments={tripRepayments}
+          members={tripPeople}
+          currentUserId={currentUser.id}
+          draft={payDraft}
+          onClose={() => setPayDraft(null)}
+          onConfirm={addRepayment}
+        />
+      ) : null}
     </div>
   )
 }

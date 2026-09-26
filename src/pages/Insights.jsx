@@ -103,9 +103,9 @@ export function InsightsPage() {
               <h2 className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">By trip</h2>
               <ul className="mt-5 divide-y divide-line border-y border-line">
                 {trips.map((trip) => (
-                  <li key={trip.id} className="flex items-baseline justify-between gap-4 py-4">
-                    <span className="text-sm text-ink">{trip.destination}</span>
-                    <span className="text-sm tabular-nums text-ink-muted">
+                  <li key={trip.id} className="flex min-w-0 items-baseline justify-between gap-4 py-4">
+                    <span className="min-w-0 truncate text-sm text-ink">{trip.destination}</span>
+                    <span className="shrink-0 text-sm tabular-nums text-ink-muted">
                       {formatMoney(getTripSpending(expenses, trip.id), trip.currency)} /{' '}
                       {formatMoney(trip.budgetAmount, trip.currency)}
                     </span>

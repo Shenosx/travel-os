@@ -65,7 +65,10 @@ export function formatCloudInvitationError(error, action = 'load') {
   if (/fetch|network|failed to fetch/i.test(message)) {
     return 'Could not reach the cloud just now. Local trips are unchanged.'
   }
-  if (code === 'PGRST301' || /jwt|not authenticated|invalid claim|must be authenticated/i.test(message)) {
+  if (
+    code === 'PGRST301' ||
+    /jwt|not authenticated|invalid claim|must be authenticated|permission denied for function/i.test(message)
+  ) {
     return 'Sign in to continue.'
   }
   if (/only the trip owner can create invitations/i.test(message)) {
@@ -281,18 +284,160 @@ export async function revokeCloudInvitation(args = {}) {
 export async function acceptCloudInvitation(args = {}) {
   const client = args.client ?? null
   const session = args.session ?? null
-  const rawToken = String(args.rawToken ?? '').trim()
+  const rawToken = normalizeInviteToken(args.rawToken)
+  const userId = session?.user?.id ?? null
 
-  if (!client) return { tripId: null, error: 'Cloud trips are not connected on this device.' }
-  if (!session?.user) return { tripId: null, error: 'Sign in to accept this invitation.' }
-  if (!rawToken) return { tripId: null, error: 'This invite link is no longer valid.' }
+  if (!client) {
+    return { tripId: null, error: 'Cloud trips are not connected on this device.', diagnostic: null }
+  }
+  if (!sessionHasAuth(session)) {
+    return { tripId: null, error: 'Sign in to accept this invitation.', diagnostic: null }
+  }
+  if (!rawToken) {
+    return { tripId: null, error: 'This invite link is no longer valid.', diagnostic: null }
+  }
 
+  const activeSession = await ensureClientSession(client, session)
   const { data, error } = await client.rpc('accept_invitation', { p_raw_token: rawToken })
-  if (error) return { tripId: null, error: formatCloudInvitationError(error, 'accept') }
+  const diagnostic = invitationAcceptDiagnostic({
+    userId: activeSession?.user?.id ?? userId,
+    rawToken,
+    data,
+    error,
+  })
+  logInvitationAccept(diagnostic)
 
-  const tripId = typeof data === 'string' ? data : data?.toString?.() ?? null
-  if (!tripId) return { tripId: null, error: 'This invite could not be accepted.' }
-  return { tripId, error: null }
+  if (error) {
+    return { tripId: null, error: formatCloudInvitationError(error, 'accept'), diagnostic }
+  }
+
+  const tripId = readAcceptedTripId(data)
+  if (!tripId) {
+    return { tripId: null, error: 'This invite could not be accepted.', diagnostic }
+  }
+  return { tripId, error: null, diagnostic }
+}
+
+export function normalizeInviteToken(token) {
+  let value = String(token ?? '').trim()
+  if (!value) return ''
+  try {
+    if (/%[0-9a-f]{2}/i.test(value)) {
+      value = decodeURIComponent(value).trim()
+    }
+  } catch {
+    /* keep the raw value */
+  }
+  return value
+}
+
+export function looksLikeCloudInviteToken(token) {
+  return /^[0-9a-f]{64}$/i.test(normalizeInviteToken(token))
+}
+
+export function readAcceptedTripId(data) {
+  if (data == null) return null
+  if (typeof data === 'string') {
+    const value = data.trim()
+    return value || null
+  }
+  if (Array.isArray(data)) return readAcceptedTripId(data[0])
+  if (typeof data === 'object') {
+    return readAcceptedTripId(data.trip_id ?? data.tripId ?? data.id ?? data.accept_invitation)
+  }
+  const value = String(data).trim()
+  return value && value !== '[object Object]' ? value : null
+}
+
+function sessionHasAuth(session) {
+  if (!session || typeof session !== 'object') return false
+  try {
+    if (session.user?.__isUserNotAvailableProxy) return Boolean(session.access_token)
+    return Boolean(session.user?.id || session.access_token)
+  } catch {
+    return Boolean(session.access_token)
+  }
+}
+
+function tokenPresence(token) {
+  const value = String(token ?? '')
+  return {
+    present: value.length > 0,
+    length: value.length,
+    prefix: value.slice(0, 4),
+    hex64: looksLikeCloudInviteToken(value),
+  }
+}
+
+export function invitationAcceptDiagnostic(input = {}) {
+  const error = input.error ?? null
+  return {
+    userId: input.userId ?? null,
+    token: tokenPresence(input.rawToken),
+    rpc: 'accept_invitation',
+    args: { p_raw_token: '[redacted]' },
+    data: input.data ?? null,
+    error: error
+      ? {
+          message: redactSecrets(error.message ?? null),
+          code: error.code ?? null,
+          details: redactSecrets(error.details ?? null),
+          hint: redactSecrets(error.hint ?? null),
+        }
+      : null,
+  }
+}
+
+function logInvitationAccept(diagnostic) {
+  try {
+    console.info('[accept_invitation]', diagnostic)
+  } catch {
+    /* ignore */
+  }
+}
+
+async function ensureClientSession(client, session) {
+  if (!client?.auth) return session
+  if (typeof client.auth.getSession === 'function') {
+    const { data } = await client.auth.getSession()
+    if (data?.session?.access_token) return data.session
+  }
+  if (session?.access_token && typeof client.auth.setSession === 'function') {
+    const { data } = await client.auth.setSession({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token || '',
+    })
+    if (data?.session?.access_token) return data.session
+  }
+  return session
+}
+
+export function prefersCloudJoin({ configured, session } = {}) {
+  return Boolean(configured && session?.user)
+}
+
+export function isAlreadyCloudMemberError(error) {
+  return /already on this trip|already a member/i.test(String(error ?? ''))
+}
+
+export function cloudTripWorkspacePath(tripId) {
+  if (!isCloudTripId(tripId)) return '/trips'
+  return `/trips?cloud=${encodeURIComponent(tripId)}`
+}
+
+function mapJoinTrip(data) {
+  if (!data) return null
+  return {
+    id: data.id,
+    city: data.city,
+    country: data.country,
+    destination: data.destination,
+    startDate: data.start_date,
+    endDate: data.end_date,
+    inviteCode: data.invite_code,
+    visibility: data.visibility,
+    source: 'cloud',
+  }
 }
 
 const JOIN_TRIP_COLUMNS = 'id, city, country, destination, start_date, end_date, invite_code, visibility'
@@ -309,19 +454,79 @@ export async function getCloudTripIdentity(args = {}) {
 
   const { data, error } = await client.from('trips').select(JOIN_TRIP_COLUMNS).eq('id', tripId).maybeSingle()
   if (error || !data) return { trip: null, error: null }
+  return { trip: mapJoinTrip(data), error: null }
+}
+
+/**
+ * Visible only if RLS already allows the caller to read the trip.
+ * Invite code is identity, not authorization.
+ */
+export async function getVisibleCloudTripByInviteCode(args = {}) {
+  const client = args.client ?? null
+  const session = args.session ?? null
+  const inviteCode = String(args.inviteCode ?? '').trim()
+  if (!client || !session?.user || !inviteCode) return { trip: null, error: null }
+
+  const { data, error } = await client
+    .from('trips')
+    .select(JOIN_TRIP_COLUMNS)
+    .eq('invite_code', inviteCode)
+    .maybeSingle()
+  if (error || !data) return { trip: null, error: null }
+  return { trip: mapJoinTrip(data), error: null }
+}
+
+/**
+ * Cross-account join. Uses accept_invitation for auth.uid().
+ * Never reads or writes the local AppData snapshot.
+ */
+export async function acceptSharedCloudInvite(args = {}) {
+  const accepted = await acceptCloudInvitation(args)
+  if (accepted.tripId) {
+    const identity = await getCloudTripIdentity({
+      client: args.client,
+      session: args.session,
+      tripId: accepted.tripId,
+    })
+    return {
+      tripId: accepted.tripId,
+      trip: identity.trip,
+      alreadyMember: false,
+      path: cloudTripWorkspacePath(accepted.tripId),
+      error: null,
+      diagnostic: accepted.diagnostic,
+    }
+  }
+
+  if (isAlreadyCloudMemberError(accepted.error)) {
+    const visible = await getVisibleCloudTripByInviteCode(args)
+    if (visible.trip) {
+      return {
+        tripId: visible.trip.id,
+        trip: visible.trip,
+        alreadyMember: true,
+        path: cloudTripWorkspacePath(visible.trip.id),
+        error: null,
+        diagnostic: accepted.diagnostic,
+      }
+    }
+    return {
+      tripId: null,
+      trip: null,
+      alreadyMember: true,
+      path: '/trips',
+      error: null,
+      diagnostic: accepted.diagnostic,
+    }
+  }
+
   return {
-    trip: {
-      id: data.id,
-      city: data.city,
-      country: data.country,
-      destination: data.destination,
-      startDate: data.start_date,
-      endDate: data.end_date,
-      inviteCode: data.invite_code,
-      visibility: data.visibility,
-      source: 'cloud',
-    },
-    error: null,
+    tripId: null,
+    trip: null,
+    alreadyMember: false,
+    path: null,
+    error: accepted.error,
+    diagnostic: accepted.diagnostic,
   }
 }
 

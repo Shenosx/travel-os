@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAppData } from '../../../hooks/useAppData.jsx'
-import { groupNotesByDate, isIsoDate, notesForTripUser } from '../../../lib/planning.js'
+import { formatQuietDate } from '../../../lib/dates.js'
+import { isIsoDate, notesForTripUser } from '../../../lib/planning.js'
 import { Button } from '../../ui/Button.jsx'
 import { EmptyState } from '../../ui/EmptyState.jsx'
 import { Field, fieldClass, textareaClass } from '../../ui/Field.jsx'
@@ -8,18 +10,21 @@ import { Sheet, useSheetClose } from '../../ui/Sheet.jsx'
 
 function previewBody(body) {
   const text = typeof body === 'string' ? body.replace(/\s+/g, ' ').trim() : ''
-  if (text.length <= 160) return text
-  return `${text.slice(0, 160).trimEnd()}…`
+  if (text.length <= 120) return text
+  return `${text.slice(0, 120).trimEnd()}…`
 }
 
-export function NotesView({ tripId }) {
+function sortNotesByUpdated(notes) {
+  return [...notes].sort((a, b) => String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')))
+}
+
+export function NotesView({ tripId, canEdit = false }) {
   const { currentUser, notes, addNote, updateNote, deleteNote } = useAppData()
   const userId = currentUser.id
   const tripNotes = useMemo(
-    () => notesForTripUser(notes, tripId, userId),
+    () => sortNotesByUpdated(notesForTripUser(notes, tripId, userId)),
     [notes, tripId, userId],
   )
-  const groups = useMemo(() => groupNotesByDate(tripNotes), [tripNotes])
 
   const [sheet, setSheet] = useState(null)
   const [confirmId, setConfirmId] = useState(null)
@@ -30,109 +35,114 @@ export function NotesView({ tripId }) {
   }, [tripId, userId])
 
   function openAdd() {
+    if (!canEdit) return
     setSheet({ type: 'note' })
   }
 
   return (
     <div className="min-w-0">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <Link to={`/trips/${tripId}`} className="inline-flex min-h-11 items-center text-[13px] text-ink-subtle hover:text-ink">
+        ← Trip details
+      </Link>
+
+      <header className="mt-5 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">Notes</p>
+          <h2 className="font-display text-[28px] leading-[1.05] tracking-[-0.04em] text-ink sm:text-[34px]">
+            Notes
+          </h2>
+          <p className="mt-3 max-w-[42ch] text-[15px] text-ink-muted">
+            Keep the little things you'll want later.
+          </p>
         </div>
-        <button type="button" className="inline-flex min-h-11 items-center text-sm text-accent" onClick={openAdd}>
-          + Add Note
-        </button>
-      </div>
+        {canEdit ? (
+          <button type="button" className="inline-flex min-h-11 items-center text-sm text-accent" onClick={openAdd}>
+            + New note
+          </button>
+        ) : null}
+      </header>
 
       {tripNotes.length ? (
-        <div className="mt-8 space-y-10">
-          {groups.map((group) => (
-            <section key={group.date || 'undated'} aria-labelledby={`note-date-${group.date || 'undated'}`}>
-              <h3
-                id={`note-date-${group.date || 'undated'}`}
-                className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase"
+        <ul className="mt-10 grid gap-10 lg:grid-cols-2">
+          {tripNotes.map((note) => (
+            <li key={note.id} className="min-w-0">
+              <button
+                type="button"
+                className="block w-full min-w-0 text-left"
+                onClick={() => canEdit && setSheet({ type: 'note', note })}
               >
-                {group.date || 'No date'}
-              </h3>
-              <ul className="mt-3 divide-y divide-line">
-                {group.notes.map((note) => (
-                  <li key={note.id} className="py-5">
-                    <button
-                      type="button"
-                      className="block w-full min-w-0 text-left"
-                      onClick={() => setSheet({ type: 'note', note })}
+                <span className="font-display block break-words text-[22px] tracking-[-0.03em] text-ink">
+                  {note.title.trim() || 'Note'}
+                </span>
+                <span className="mt-2 block break-words text-[15px] leading-relaxed text-ink-muted">
+                  {previewBody(note.body)}
+                </span>
+              </button>
+              <p className="mt-3 text-[13px] text-ink-subtle">
+                {note.updatedAt ? `Updated ${formatQuietDate(note.updatedAt)}` : null}
+              </p>
+              {canEdit ? (
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <button
+                    type="button"
+                    className="inline-flex min-h-11 items-center text-sm text-ink-muted"
+                    onClick={() => setSheet({ type: 'note', note })}
+                  >
+                    Edit
+                  </button>
+                  {confirmId === note.id ? (
+                    <span
+                      role="alertdialog"
+                      aria-labelledby={`note-del-${note.id}`}
+                      className="flex flex-wrap items-center gap-3"
                     >
-                      {note.title ? (
-                        <span className="font-display block break-words text-[22px] tracking-[-0.03em] text-ink">
-                          {note.title}
-                        </span>
-                      ) : null}
-                      <span className="mt-1 block break-words text-sm leading-relaxed text-ink-muted">
-                        {previewBody(note.body)}
+                      <span id={`note-del-${note.id}`} className="text-sm text-ink">
+                        Delete this note?
                       </span>
-                    </button>
-                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <button type="button" className="text-sm text-ink-subtle" onClick={() => setConfirmId(null)}>
+                        Keep
+                      </button>
                       <button
                         type="button"
-                        className="inline-flex min-h-11 items-center text-sm text-ink-muted"
-                        onClick={() => setSheet({ type: 'note', note })}
+                        className="text-sm text-accent"
+                        onClick={() => {
+                          deleteNote(note.id)
+                          setConfirmId(null)
+                        }}
                       >
-                        Edit
+                        Delete
                       </button>
-                      {confirmId === note.id ? (
-                        <span
-                          role="alertdialog"
-                          aria-labelledby={`note-del-${note.id}`}
-                          className="flex flex-wrap items-center gap-3"
-                        >
-                          <span id={`note-del-${note.id}`} className="text-sm text-ink">
-                            Delete this note?
-                          </span>
-                          <button type="button" className="text-sm text-ink-subtle" onClick={() => setConfirmId(null)}>
-                            Keep
-                          </button>
-                          <button
-                            type="button"
-                            className="text-sm text-accent"
-                            onClick={() => {
-                              deleteNote(note.id)
-                              setConfirmId(null)
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="inline-flex min-h-11 items-center text-sm text-ink-subtle"
-                          onClick={() => setConfirmId(note.id)}
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="inline-flex min-h-11 items-center text-sm text-ink-subtle"
+                      onClick={() => setConfirmId(note.id)}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </li>
           ))}
-        </div>
+        </ul>
       ) : (
-        <div className="mt-8">
+        <div className="mt-10">
           <EmptyState
             title="No notes yet"
-            body="Capture ideas, reminders, or moments from your trip."
+            body="Keep ideas, reminders, and little details here."
             action={
-              <button type="button" className="inline-flex min-h-11 items-center text-sm text-accent" onClick={openAdd}>
-                + Add Note
-              </button>
+              canEdit ? (
+                <button type="button" className="inline-flex min-h-11 items-center text-sm text-accent" onClick={openAdd}>
+                  Add your first note
+                </button>
+              ) : null
             }
           />
         </div>
       )}
 
-      {sheet ? (
+      {sheet && canEdit ? (
         <NoteSheet
           tripId={tripId}
           note={sheet.note}
@@ -147,16 +157,19 @@ export function NotesView({ tripId }) {
 }
 
 function NoteSheet({ tripId, note, onClose, addNote, updateNote, deleteNote }) {
+  const [dirty, setDirty] = useState(false)
   return (
-    <Sheet title={note ? 'Edit note' : 'Add note'} kicker="Notes" onClose={onClose}>
-      <NoteForm
-        tripId={tripId}
-        note={note}
-        onClose={onClose}
-        addNote={addNote}
-        updateNote={updateNote}
-        deleteNote={deleteNote}
-      />
+    <Sheet title={note ? 'Edit note' : 'Add note'} kicker="Notes" onClose={onClose} dirty={dirty}>
+      <div onChange={() => setDirty(true)}>
+        <NoteForm
+          tripId={tripId}
+          note={note}
+          onClose={onClose}
+          addNote={addNote}
+          updateNote={updateNote}
+          deleteNote={deleteNote}
+        />
+      </div>
     </Sheet>
   )
 }
@@ -181,9 +194,7 @@ function NoteForm({ tripId, note, onClose, addNote, updateNote, deleteNote }) {
     const nextDate = parsedDate()
     if (!trimmedBody || !nextDate.ok) return
     const payload = { title: title.trim(), body: trimmedBody, date: nextDate.date }
-    const saved = note
-      ? updateNote(note.id, payload)
-      : addNote({ tripId, ...payload })
+    const saved = note ? updateNote(note.id, payload) : addNote({ tripId, ...payload })
     if (!saved) return
     onClose()
   }
@@ -201,21 +212,21 @@ function NoteForm({ tripId, note, onClose, addNote, updateNote, deleteNote }) {
           autoFocus
         />
       </Field>
-      <Field label="Date">
-        <input
-          className={fieldClass}
-          type="date"
-          value={date}
-          onChange={(event) => setDate(event.target.value)}
-        />
-      </Field>
-      <Field label="Body">
+      <Field label="Content">
         <textarea
           className={textareaClass}
           value={body}
           onChange={(event) => setBody(event.target.value)}
           required
           rows={6}
+        />
+      </Field>
+      <Field label="Date">
+        <input
+          className={fieldClass}
+          type="date"
+          value={date}
+          onChange={(event) => setDate(event.target.value)}
         />
       </Field>
       {note ? (

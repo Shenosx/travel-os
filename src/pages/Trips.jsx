@@ -1,3 +1,4 @@
+import { useSearchParams } from 'react-router-dom'
 import { SectionHeading } from '../components/dashboard/SectionHeading.jsx'
 import { useQuickAdd } from '../components/layout/QuickAddButton.jsx'
 import { CloudTripsSection } from '../components/trips/CloudTripsSection.jsx'
@@ -6,6 +7,7 @@ import { Button } from '../components/ui/Button.jsx'
 import { EmptyState } from '../components/ui/EmptyState.jsx'
 import { useAppData } from '../hooks/useAppData.jsx'
 import { useCloudTrips } from '../hooks/useCloudTrips.js'
+import { isCloudTripId } from '../lib/trips/cloud.js'
 import { getNextTrip, getTripStatus } from '../lib/trips.js'
 
 function tripSummary(trip, itineraries, places, expenses) {
@@ -23,6 +25,8 @@ function tripSummary(trip, itineraries, places, expenses) {
 export function TripsPage() {
   const { trips, expenses, itineraries, places, currentUser } = useAppData()
   const cloud = useCloudTrips()
+  const [params] = useSearchParams()
+  const focusCloudId = isCloudTripId(params.get('cloud')) ? params.get('cloud') : null
   const { openAction } = useQuickAdd()
   const nextTrip = getNextTrip(trips)
   const upcoming = trips
@@ -135,6 +139,7 @@ export function TripsPage() {
             loading={cloud.loading}
             error={cloud.error}
             currentUserId={cloud.currentUserId}
+            focusTripId={focusCloudId}
             onCreate={cloud.createTrip}
             onUpdate={cloud.updateTrip}
             onDelete={cloud.deleteTrip}

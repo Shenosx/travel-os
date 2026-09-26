@@ -19,6 +19,7 @@ export function createSeedSnapshot() {
     users: clone(users),
     trips: clone(trips),
     expenses: clone(expenses),
+    repayments: [],
     itineraries: clone(itineraries),
     places: clone(places),
     bookings: clone(bookings),

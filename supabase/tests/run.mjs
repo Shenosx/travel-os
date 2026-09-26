@@ -66,6 +66,19 @@ async function asUser(pg, id) {
   await exec(pg, 'SET ROLE authenticated;')
 }
 
+async function asUserWithoutEmailClaim(pg, id) {
+  await asPostgres(pg)
+  await query(
+    pg,
+    `SELECT set_config('request.jwt.claim.sub', $1, false),
+            set_config('request.jwt.claim.email', '', false),
+            set_config('request.jwt.claim.role', 'authenticated', false),
+            set_config('request.jwt.claims', $2, false)`,
+    [id, JSON.stringify({ sub: id, role: 'authenticated' })],
+  )
+  await exec(pg, 'SET ROLE authenticated;')
+}
+
 function isMissing(error, ...needles) {
   const message = String(error?.message || error)
   return needles.some((needle) => message.toLowerCase().includes(needle.toLowerCase()))
@@ -544,6 +557,27 @@ async function main() {
       'invalid',
       'Already a member',
     ),
+  )
+
+  results.push(
+    await expectOk('13c. Accept works when JWT email is absent but profile email matches', async () => {
+      await asUser(pg, OWNER)
+      const created = await query(
+        pg,
+        `SELECT public.create_invitation($1, 'sofia@example.com', 'viewer', 'Sofia') AS payload`,
+        [tripId],
+      )
+      const token = created.rows[0].payload.token
+      await asUserWithoutEmailClaim(pg, EDITOR_B)
+      const joinedTrip = await value(pg, 'SELECT public.accept_invitation($1)', [token])
+      if (joinedTrip !== tripId) throw new Error('accept did not join without a JWT email claim')
+      const role = await value(
+        pg,
+        'SELECT role::text FROM trip_members WHERE trip_id = $1 AND user_id = $2',
+        [tripId, EDITOR_B],
+      )
+      if (role !== 'viewer') throw new Error(`stored role was ${role}`)
+    }),
   )
 
   results.push(

@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { isCloudTripOwner } from '../../lib/trips/cloud.js'
 import { useCloudRealtimeRefresh } from '../../hooks/useCloudTripRealtime.js'
 import { CloudBookingsSheet } from './CloudBookingsSheet.jsx'
@@ -16,6 +16,7 @@ export function CloudTripsSection({
   loading,
   error,
   currentUserId,
+  focusTripId = null,
   onCreate,
   onUpdate,
   onDelete,
@@ -59,6 +60,12 @@ export function CloudTripsSection({
     [onReload],
   )
   const { liveError } = useCloudRealtimeRefresh(activeTrip?.id, ['trip', 'gone'], handleTripRealtime)
+
+  useEffect(() => {
+    if (!focusTripId) return
+    const focused = trips.find((trip) => trip.id === focusTripId)
+    if (focused) setItineraryTrip(focused)
+  }, [focusTripId, trips])
 
   async function handleCreate(input) {
     setBusy(true)

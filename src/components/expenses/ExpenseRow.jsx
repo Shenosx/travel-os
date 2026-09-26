@@ -3,21 +3,30 @@ import { formatConvertedApprox, formatExpenseAmount, formatMoney } from '../../l
 import { CATEGORY_LABEL } from '../../lib/expenses.js'
 import { formatLongDate } from '../../lib/dates.js'
 import { getConvertedShareAmount } from '../../lib/currency.js'
+import { getExpenseRepayments, paymentMethodLabel } from '../../lib/repayments.js'
 
-export function ExpenseRow({ expense, members, currentUserId, onClick }) {
+export function ExpenseRow({
+  expense,
+  members,
+  currentUserId,
+  onClick,
+  shared = true,
+  repayments = [],
+}) {
   const payer = members.find((member) => member.userId === expense.payerId)?.user
   const approx = formatConvertedApprox(expense)
   const yourShare = getConvertedShareAmount(expense, currentUserId)
   const home = expense.convertedCurrency ?? 'MYR'
+  const latest = getExpenseRepayments(repayments, expense.id, currentUserId)[0]
 
   const content = (
     <>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[16px] font-medium tracking-[-0.02em] text-ink">{expense.description}</p>
+          <p className="break-words text-[16px] font-medium tracking-[-0.02em] text-ink">{expense.description}</p>
           <p className="mt-1 text-[13px] text-ink-subtle">
-            {formatLongDate(expense.date)} · {CATEGORY_LABEL[expense.category]} · Paid by{' '}
-            {displayName(payer, currentUserId)}
+            {formatLongDate(expense.date)} · {CATEGORY_LABEL[expense.category]}
+            {shared ? ` · Paid by ${displayName(payer, currentUserId)}` : null}
           </p>
         </div>
         <div className="text-right">
@@ -25,19 +34,19 @@ export function ExpenseRow({ expense, members, currentUserId, onClick }) {
           {approx ? <p className="mt-0.5 text-[12px] text-ink-subtle">{approx}</p> : null}
         </div>
       </div>
-      <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <ul className="flex flex-wrap gap-x-5 gap-y-1">
-          {expense.shares.map((share) => (
-            <li key={share.userId} className="text-[13px] text-ink-muted">
-              {displayName(members.find((member) => member.userId === share.userId)?.user, currentUserId)}
-              <span className="text-ink-subtle"> · {formatMoney(share.amount, expense.currency)}</span>
-            </li>
-          ))}
-        </ul>
-        <p className="text-[12px] text-ink-subtle">
-          Your share {formatMoney(yourShare, home)}
-        </p>
-      </div>
+      {shared ? (
+        <div className="mt-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <p className="text-[13px] text-ink-muted">
+            Your share
+            <span className="ml-1.5 tabular-nums text-ink">{formatMoney(yourShare, home)}</span>
+          </p>
+          {latest ? (
+            <p className="text-[12px] text-ink-subtle">
+              {formatMoney(latest.amount, latest.currency || home)} repaid · {paymentMethodLabel(latest.paymentMethod)}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </>
   )
 

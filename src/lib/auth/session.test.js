@@ -8,8 +8,10 @@ import {
   initialsFromName,
   isEmailConfirmationPending,
   mapAuthUser,
+  visibleAccount,
 } from './session.js'
-import { getUserStorageKey } from '../../data/storage.js'
+import { CURRENT_USER_ID, trips, users } from '../../data/mock.js'
+import { getUserStorageKey, STORAGE_KEY } from '../../data/storage.js'
 
 function jwtWith(payload) {
   const encode = (value) => Buffer.from(JSON.stringify(value)).toString('base64url')
@@ -76,6 +78,15 @@ test('mapAuthUser reads identity from auth.users, not a client-supplied id', () 
   })
 })
 
+test('mapAuthUser reads display_name from metadata when name is absent', () => {
+  const mapped = mapAuthUser({
+    id: 'auth-sio',
+    email: 'sio@example.com',
+    user_metadata: { display_name: 'Sio Kai Xin' },
+  })
+  assert.equal(mapped.name, 'Sio Kai Xin')
+})
+
 test('sign up without a session is treated as email confirmation pending', () => {
   assert.equal(isEmailConfirmationPending({ user: { id: '1' }, session: null }), true)
   assert.equal(isEmailConfirmationPending({ user: { id: '1' }, session: { access_token: 'x' } }), false)
@@ -94,11 +105,64 @@ test('initials fall back from name then email', () => {
 
 test('displayIdentity prefers the database profile over metadata', () => {
   const identity = displayIdentity(
-    { id: 'user-1', name: 'Jamie Lim', email: 'jamie@travelos.app', initials: 'JL' },
-    { id: 'user-1', email: 'jamie@travelos.app', user_metadata: { name: 'Other' } },
+    { id: 'user-1', name: 'Sio Kai Xin', short_name: 'Sio', email: 'sio@example.com', initials: 'SK' },
+    { id: 'user-1', email: 'sio@example.com', user_metadata: { name: 'Other', display_name: 'Other' } },
   )
-  assert.equal(identity.name, 'Jamie Lim')
-  assert.equal(identity.initials, 'JL')
+  assert.equal(identity.name, 'Sio Kai Xin')
+  assert.equal(identity.shortName, 'Sio')
+  assert.equal(identity.initials, 'SK')
+})
+
+test('auth user name and email appear on dashboard, sidebar, and account', () => {
+  const identity = displayIdentity(
+    { id: 'auth-sio', name: 'Sio Kai Xin', short_name: 'Sio', email: 'sio@example.com', initials: 'SK' },
+    { id: 'auth-sio', email: 'sio@example.com', user_metadata: { name: 'Sio Kai Xin' } },
+  )
+  const view = visibleAccount(identity)
+  assert.equal(view.greeting, 'Sio')
+  assert.equal(view.name, 'Sio Kai Xin')
+  assert.equal(view.email, 'sio@example.com')
+  assert.equal(view.initials, 'SK')
+})
+
+test('a second auth user does not see Jamie as the current identity', () => {
+  const identity = displayIdentity(null, {
+    id: 'auth-oliver',
+    email: 'oliver@example.com',
+    user_metadata: { name: 'Oliver Tan' },
+  })
+  const view = visibleAccount(identity)
+  assert.equal(view.greeting, 'Oliver')
+  assert.equal(view.name, 'Oliver Tan')
+  assert.equal(view.email, 'oliver@example.com')
+  assert.equal(view.name.includes('Jamie'), false)
+  assert.equal(view.email.includes('jamie@travelos.app'), false)
+})
+
+test('email fallback works if display name is unavailable', () => {
+  const identity = displayIdentity(null, {
+    id: 'auth-solo',
+    email: 'solo@example.com',
+    user_metadata: {},
+  })
+  const view = visibleAccount(identity)
+  assert.equal(view.name, 'solo@example.com')
+  assert.equal(view.greeting, 'solo')
+  assert.equal(view.email, 'solo@example.com')
+  assert.notEqual(view.greeting, 'Jamie')
+})
+
+test('seed demo users still exist as trip member data', () => {
+  assert.equal(CURRENT_USER_ID, 'user-jamie')
+  assert.ok(users.some((user) => user.id === 'user-jamie' && user.email === 'jamie@travelos.app'))
+  assert.ok(trips.some((trip) => trip.members.some((member) => member.userId === 'user-jamie')))
+})
+
+test('storage isolation key remains the auth user id', () => {
+  const id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+  assert.equal(getUserStorageKey(id), `travel-os:data:v1:user:${id}`)
+  assert.equal(STORAGE_KEY, 'travel-os:data:v1')
+  assert.notEqual(getUserStorageKey(id), STORAGE_KEY)
 })
 
 test('fetchOwnProfile only selects the caller profile and never inserts', async () => {

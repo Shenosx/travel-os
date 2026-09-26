@@ -9,7 +9,7 @@ export function mapAuthUser(user) {
   return {
     id: user.id,
     email: user.email ?? '',
-    name: String(metadata.name ?? metadata.full_name ?? '').trim(),
+    name: String(metadata.name ?? metadata.display_name ?? metadata.full_name ?? '').trim(),
     emailConfirmed: Boolean(user.email_confirmed_at || user.confirmed_at),
   }
 }
@@ -118,15 +118,41 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function firstNameFrom(name, email) {
+  const label = String(name || '').trim()
+  if (label && !label.includes('@')) {
+    return label.split(/\s+/).filter(Boolean)[0] || ''
+  }
+  return String(email || label).split('@')[0] || ''
+}
+
 export function displayIdentity(profile, user) {
   const mapped = mapAuthUser(user)
-  const name = profile?.name || mapped?.name || mapped?.email || ''
-  const email = profile?.email || mapped?.email || ''
+  const name = String(profile?.name || mapped?.name || mapped?.email || '').trim()
+  const email = String(profile?.email || mapped?.email || '').trim()
+  const shortName = String(profile?.short_name || '').trim() || firstNameFrom(name, email)
   return {
     id: mapped?.id ?? profile?.id ?? null,
     name,
     email,
+    shortName,
     initials: profile?.initials || initialsFromName(name, email),
     emailConfirmed: mapped?.emailConfirmed ?? false,
+  }
+}
+
+/**
+ * Signed-in presentation for Dashboard, sidebar, and Account.
+ * Always derived from Auth displayIdentity — never the local demo currentUser.
+ */
+export function visibleAccount(identity) {
+  const email = String(identity?.email || '').trim()
+  const name = String(identity?.name || '').trim() || email
+  const greeting = String(identity?.shortName || '').trim() || firstNameFrom(name, email)
+  return {
+    greeting,
+    name,
+    email,
+    initials: identity?.initials || initialsFromName(name, email),
   }
 }

@@ -353,7 +353,12 @@ function InviteSheet({ trip, onClose, onInvite }) {
   }
 
   return (
-    <Sheet kicker="People" title="Invite someone" onClose={onClose}>
+    <Sheet
+      kicker="People"
+      title="Invite someone"
+      onClose={onClose}
+      dirty={!sent && (Boolean(email.trim()) || role !== 'editor')}
+    >
       <div className="space-y-4">
         <p className="text-sm leading-relaxed text-ink-muted">
           They’ll be able to open the trip with this link. Nothing is emailed yet.

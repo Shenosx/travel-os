@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { formatDateRange } from '../../lib/dates.js'
 import { describeTripCountdown, STATUS_LABEL } from '../../lib/trips.js'
 
-export function UpcomingHero({ trip }) {
+export function UpcomingHero({ trip, packing = null, checklist = null }) {
   const countdown = describeTripCountdown(trip)
   const status = countdown.status
 
@@ -22,12 +22,24 @@ export function UpcomingHero({ trip }) {
           {trip.notes ? (
             <p className="mt-4 max-w-[36ch] text-[14px] leading-[1.65] text-ink-subtle">{trip.notes}</p>
           ) : null}
-          <Link
-            to={`/trips/${trip.id}`}
-            className="mt-8 inline-flex text-[13px] font-medium text-accent hover:text-accent-hover"
-          >
-            Open trip
-          </Link>
+          <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2">
+            <Link
+              to={`/trips/${trip.id}`}
+              className="inline-flex text-[13px] font-medium text-accent hover:text-accent-hover"
+            >
+              Open trip
+            </Link>
+            {packing?.href ? (
+              <Link to={packing.href} className="text-[13px] text-ink-muted hover:text-ink">
+                Packing · {packing.percent}% packed
+              </Link>
+            ) : null}
+            {checklist?.href ? (
+              <Link to={checklist.href} className="text-[13px] text-ink-muted hover:text-ink">
+                Checklist · {checklist.done} / {checklist.total} complete
+              </Link>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex flex-col justify-end bg-accent-soft px-6 py-8 sm:px-8 sm:py-10">

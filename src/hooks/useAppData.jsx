@@ -22,20 +22,25 @@ import {
   upsertInvitation,
   voteOnPoll,
 } from '../lib/collaboration.js'
-import { nowIso } from '../lib/dates.js'
+import { nowIso, todayIso } from '../lib/dates.js'
 import { createId } from '../lib/format.js'
 import { normalizePendingOp } from '../lib/sync/pendingOps.js'
 import { sanitizeTripMigration } from '../lib/migration/mappings.js'
 import { clearItineraryRefs, moveItineraryItemRecord, updateItineraryItemRecord } from '../lib/itinerary.js'
 import { HOME_CURRENCY, withConvertedAmount } from '../lib/currency.js'
+import { validateRepayment } from '../lib/repayments.js'
 import { bookingItineraryDate, bookingItineraryPatch, itineraryItemForBooking } from '../lib/bookings.js'
 import { categoryToItinerary, itineraryItemForPlace, markPlaceVisited } from '../lib/places.js'
 import {
   canDeleteBooking,
   canDeleteExpense,
+  canDeleteRepayment,
   canDeletePlace,
   canEditBooking,
   canEditExpense,
+  canEditChecklist,
+  canEditNotes,
+  canEditPacking,
   canEditPlace,
   canOnTrip,
   getTripPermissions,
@@ -121,6 +126,7 @@ export function AppDataProvider({ children }) {
   const [users, setUsers] = useState(() => boot.users)
   const [trips, setTrips] = useState(() => boot.trips)
   const [expenses, setExpenses] = useState(() => boot.expenses)
+  const [repayments, setRepayments] = useState(() => boot.repayments ?? [])
   const [itineraries, setItineraries] = useState(() => boot.itineraries)
   const [places, setPlaces] = useState(() => boot.places)
   const [bookings, setBookings] = useState(() => boot.bookings)
@@ -145,6 +151,7 @@ export function AppDataProvider({ children }) {
     setUsers(snapshot.users ?? [])
     setTrips(snapshot.trips ?? [])
     setExpenses(snapshot.expenses ?? [])
+    setRepayments(snapshot.repayments ?? [])
     setItineraries(snapshot.itineraries ?? [])
     setPlaces(snapshot.places ?? [])
     setBookings(snapshot.bookings ?? [])
@@ -169,6 +176,7 @@ export function AppDataProvider({ children }) {
         users,
         trips,
         expenses,
+        repayments,
         itineraries,
         places,
         bookings,
@@ -193,6 +201,7 @@ export function AppDataProvider({ children }) {
     users,
     trips,
     expenses,
+    repayments,
     itineraries,
     places,
     bookings,
@@ -247,6 +256,7 @@ export function AppDataProvider({ children }) {
       allTrips: trips,
       allInvitations: invitations,
       expenses: expenses.filter((expense) => memberTripIds.has(expense.tripId)),
+      repayments: repayments.filter((repayment) => memberTripIds.has(repayment.tripId)),
       itineraries: itineraries.filter((entry) => memberTripIds.has(entry.tripId)),
       places: places.filter((place) => memberTripIds.has(place.tripId)),
       bookings: bookings.filter((booking) => memberTripIds.has(booking.tripId)),
@@ -371,6 +381,60 @@ export function AppDataProvider({ children }) {
           return [expense, ...list]
         })
         return expense
+      },
+      addRepayment: (input) => {
+        const trip = tripById(input.tripId)
+        if (!canOnTrip(trip, currentUser.id, 'addExpense')) return null
+        const memberIds = trip.members.map((member) => member.userId)
+        const tripExpenses = expenses.filter((item) => item.tripId === input.tripId)
+        const tripRepayments = repayments.filter((item) => item.tripId === input.tripId)
+        const check = validateRepayment(input, tripExpenses, tripRepayments, memberIds)
+        if (!check.ok) return null
+        const stamp = nowIso()
+        const next = {
+          id: createId('repay'),
+          tripId: input.tripId,
+          fromUserId: input.fromUserId,
+          toUserId: input.toUserId,
+          amount: Number(input.amount),
+          currency: input.currency ?? trip.currency ?? HOME_CURRENCY,
+          paymentMethod: input.paymentMethod,
+          paidAt: input.paidAt ?? todayIso(),
+          note: typeof input.note === 'string' ? input.note : '',
+          expenseId: input.expenseId || null,
+          createdBy: currentUser.id,
+          createdAt: stamp,
+        }
+        setRepayments((current) => [next, ...current])
+        recordActivity({
+          tripId: next.tripId,
+          actorId: currentUser.id,
+          type: 'repayment.add',
+          meta: { title: String(next.amount) },
+        })
+        return next
+      },
+      deleteRepayment: (repaymentId) => {
+        const current = repayments.find((item) => item.id === repaymentId)
+        if (!current) return null
+        const trip = tripById(current.tripId)
+        if (!canDeleteRepayment(trip, currentUser.id, current)) return null
+        setRepayments((list) => list.filter((item) => item.id !== repaymentId))
+        recordActivity({
+          tripId: current.tripId,
+          actorId: currentUser.id,
+          type: 'repayment.delete',
+          meta: { title: String(current.amount) },
+        })
+        return current
+      },
+      restoreRepayment: (repayment) => {
+        if (!repayment?.id) return null
+        setRepayments((list) => {
+          if (list.some((item) => item.id === repayment.id)) return list
+          return [repayment, ...list]
+        })
+        return repayment
       },
       addItineraryItem: (tripId, date, item) => {
         const trip = tripById(tripId)
@@ -859,6 +923,7 @@ export function AppDataProvider({ children }) {
         setActivities((current) => current.filter((item) => item.tripId !== tripId))
         setPolls((current) => current.filter((item) => item.tripId !== tripId))
         setExpenses((current) => current.filter((item) => item.tripId !== tripId))
+        setRepayments((current) => current.filter((item) => item.tripId !== tripId))
         setItineraries((current) => current.filter((item) => item.tripId !== tripId))
         setPlaces((current) => current.filter((item) => item.tripId !== tripId))
         setBookings((current) => current.filter((item) => item.tripId !== tripId))
@@ -871,14 +936,16 @@ export function AppDataProvider({ children }) {
         return true
       },
       ensurePackingCategories: (tripId) => {
-        if (!tripById(tripId)) return false
+        const trip = tripById(tripId)
+        if (!trip || !canEditPacking(trip, currentUser.id)) return false
         const result = applySeedDefaultPackingCategories(packingCategories, tripId, currentUser.id, { now: nowIso() })
         if (!result.seeded) return false
         setPackingCategories(result.categories)
         return true
       },
       addPackingCategory: ({ tripId, name } = {}) => {
-        if (!tripById(tripId)) return null
+        const trip = tripById(tripId)
+        if (!trip || !canEditPacking(trip, currentUser.id)) return null
         const result = applyCreatePackingCategory(
           packingCategories,
           { tripId, userId: currentUser.id, name },
@@ -889,18 +956,23 @@ export function AppDataProvider({ children }) {
         return result.category
       },
       updatePackingCategory: (categoryId, patch) => {
+        const current = packingCategories.find((row) => row.id === categoryId)
+        if (!canEditPacking(tripById(current?.tripId), currentUser.id)) return null
         const result = applyUpdatePackingCategory(packingCategories, categoryId, currentUser.id, patch, nowIso())
         if (!result.category) return null
         setPackingCategories(result.categories)
         return result.category
       },
       reorderPackingCategories: (tripId, orderedIds) => {
+        if (!canEditPacking(tripById(tripId), currentUser.id)) return false
         const result = applyReorderPackingCategories(packingCategories, tripId, currentUser.id, orderedIds, nowIso())
         if (!result.ok) return false
         setPackingCategories(result.categories)
         return true
       },
       deletePackingCategory: (categoryId) => {
+        const current = packingCategories.find((row) => row.id === categoryId)
+        if (!canEditPacking(tripById(current?.tripId), currentUser.id)) return false
         const result = applyDeletePackingCategory(packingCategories, packingItems, categoryId, currentUser.id)
         if (!result.ok) return false
         setPackingCategories(result.categories)
@@ -908,7 +980,8 @@ export function AppDataProvider({ children }) {
         return true
       },
       addPackingItem: (input = {}) => {
-        if (!tripById(input.tripId)) return null
+        const trip = tripById(input.tripId)
+        if (!trip || !canEditPacking(trip, currentUser.id)) return null
         const result = applyCreatePackingItem(
           packingItems,
           packingCategories,
@@ -920,31 +993,40 @@ export function AppDataProvider({ children }) {
         return result.item
       },
       updatePackingItem: (itemId, patch) => {
+        const current = packingItems.find((row) => row.id === itemId)
+        if (!canEditPacking(tripById(current?.tripId), currentUser.id)) return null
         const result = applyUpdatePackingItem(packingItems, packingCategories, itemId, currentUser.id, patch, nowIso())
         if (!result.item) return null
         setPackingItems(result.items)
         return result.item
       },
       togglePackingItemPacked: (itemId) => {
+        const current = packingItems.find((row) => row.id === itemId)
+        if (!canEditPacking(tripById(current?.tripId), currentUser.id)) return null
         const result = applyTogglePackingItemPacked(packingItems, itemId, currentUser.id, nowIso())
         if (!result.item) return null
         setPackingItems(result.items)
         return result.item
       },
       reorderPackingItems: (categoryId, orderedIds) => {
+        const current = packingCategories.find((row) => row.id === categoryId)
+        if (!canEditPacking(tripById(current?.tripId), currentUser.id)) return false
         const result = applyReorderPackingItems(packingItems, categoryId, currentUser.id, orderedIds, nowIso())
         if (!result.ok) return false
         setPackingItems(result.items)
         return true
       },
       deletePackingItem: (itemId) => {
+        const current = packingItems.find((row) => row.id === itemId)
+        if (!canEditPacking(tripById(current?.tripId), currentUser.id)) return false
         const result = applyDeletePackingItem(packingItems, itemId, currentUser.id)
         if (!result.ok) return false
         setPackingItems(result.items)
         return true
       },
       ensureChecklistCategories: (tripId) => {
-        if (!tripById(tripId)) return false
+        const trip = tripById(tripId)
+        if (!trip || !canEditChecklist(trip, currentUser.id)) return false
         const result = applySeedDefaultChecklistCategories(
           checklistCategories,
           tripId,
@@ -956,7 +1038,8 @@ export function AppDataProvider({ children }) {
         return true
       },
       addChecklistCategory: ({ tripId, phase, name } = {}) => {
-        if (!tripById(tripId)) return null
+        const trip = tripById(tripId)
+        if (!trip || !canEditChecklist(trip, currentUser.id)) return null
         const result = applyCreateChecklistCategory(
           checklistCategories,
           { tripId, userId: currentUser.id, phase, name },
@@ -967,12 +1050,15 @@ export function AppDataProvider({ children }) {
         return result.category
       },
       updateChecklistCategory: (categoryId, patch) => {
+        const current = checklistCategories.find((row) => row.id === categoryId)
+        if (!canEditChecklist(tripById(current?.tripId), currentUser.id)) return null
         const result = applyUpdateChecklistCategory(checklistCategories, categoryId, currentUser.id, patch, nowIso())
         if (!result.category) return null
         setChecklistCategories(result.categories)
         return result.category
       },
       reorderChecklistCategories: (tripId, phase, orderedIds) => {
+        if (!canEditChecklist(tripById(tripId), currentUser.id)) return false
         const result = applyReorderChecklistCategories(
           checklistCategories,
           tripId,
@@ -986,6 +1072,8 @@ export function AppDataProvider({ children }) {
         return true
       },
       deleteChecklistCategory: (categoryId) => {
+        const current = checklistCategories.find((row) => row.id === categoryId)
+        if (!canEditChecklist(tripById(current?.tripId), currentUser.id)) return false
         const result = applyDeleteChecklistCategory(
           checklistCategories,
           checklistItems,
@@ -998,7 +1086,8 @@ export function AppDataProvider({ children }) {
         return true
       },
       addChecklistItem: (input = {}) => {
-        if (!tripById(input.tripId)) return null
+        const trip = tripById(input.tripId)
+        if (!trip || !canEditChecklist(trip, currentUser.id)) return null
         const result = applyCreateChecklistItem(
           checklistItems,
           checklistCategories,
@@ -1010,6 +1099,8 @@ export function AppDataProvider({ children }) {
         return result.item
       },
       updateChecklistItem: (itemId, patch) => {
+        const current = checklistItems.find((row) => row.id === itemId)
+        if (!canEditChecklist(tripById(current?.tripId), currentUser.id)) return null
         const result = applyUpdateChecklistItem(
           checklistItems,
           checklistCategories,
@@ -1023,37 +1114,48 @@ export function AppDataProvider({ children }) {
         return result.item
       },
       toggleChecklistItemDone: (itemId) => {
+        const current = checklistItems.find((row) => row.id === itemId)
+        if (!canEditChecklist(tripById(current?.tripId), currentUser.id)) return null
         const result = applyToggleChecklistItemDone(checklistItems, itemId, currentUser.id, nowIso())
         if (!result.item) return null
         setChecklistItems(result.items)
         return result.item
       },
       reorderChecklistItems: (categoryId, orderedIds) => {
+        const current = checklistCategories.find((row) => row.id === categoryId)
+        if (!canEditChecklist(tripById(current?.tripId), currentUser.id)) return false
         const result = applyReorderChecklistItems(checklistItems, categoryId, currentUser.id, orderedIds, nowIso())
         if (!result.ok) return false
         setChecklistItems(result.items)
         return true
       },
       deleteChecklistItem: (itemId) => {
+        const current = checklistItems.find((row) => row.id === itemId)
+        if (!canEditChecklist(tripById(current?.tripId), currentUser.id)) return false
         const result = applyDeleteChecklistItem(checklistItems, itemId, currentUser.id)
         if (!result.ok) return false
         setChecklistItems(result.items)
         return true
       },
       addNote: (input = {}) => {
-        if (!tripById(input.tripId)) return null
+        const trip = tripById(input.tripId)
+        if (!trip || !canEditNotes(trip, currentUser.id)) return null
         const result = applyCreateNote(notes, { ...input, userId: currentUser.id }, { now: nowIso() })
         if (!result.note) return null
         setNotes(result.notes)
         return result.note
       },
       updateNote: (noteId, patch) => {
+        const current = notes.find((row) => row.id === noteId)
+        if (!canEditNotes(tripById(current?.tripId), currentUser.id)) return null
         const result = applyUpdateNote(notes, noteId, currentUser.id, patch, nowIso())
         if (!result.note) return null
         setNotes(result.notes)
         return result.note
       },
       deleteNote: (noteId) => {
+        const current = notes.find((row) => row.id === noteId)
+        if (!canEditNotes(tripById(current?.tripId), currentUser.id)) return false
         const result = applyDeleteNote(notes, noteId, currentUser.id)
         if (!result.ok) return false
         setNotes(result.notes)

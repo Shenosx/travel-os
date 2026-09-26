@@ -57,6 +57,22 @@
  * @property {string} [createdAt]
  * @property {string} [updatedAt]
  *
+ * @typedef {'maybank' | 'cash' | 'tng' | 'other'} PaymentMethod
+ *
+ * @typedef {Object} Repayment
+ * @property {string} id
+ * @property {string} tripId
+ * @property {string} fromUserId Who transferred the money
+ * @property {string} toUserId Who received the money
+ * @property {number} amount
+ * @property {string} currency
+ * @property {PaymentMethod} paymentMethod
+ * @property {string} paidAt ISO date YYYY-MM-DD
+ * @property {string} [note]
+ * @property {string} [expenseId] Optional expense this repayment is for
+ * @property {string} [createdBy]
+ * @property {string} [createdAt]
+ *
  * @typedef {Object} Invitation
  * @property {string} id
  * @property {string} tripId

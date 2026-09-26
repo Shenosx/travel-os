@@ -7,9 +7,18 @@ import { HomeTripRail } from '../components/dashboard/HomeTripRail.jsx'
 import { useQuickAdd } from '../components/layout/QuickAddButton.jsx'
 import { EmptyState } from '../components/ui/EmptyState.jsx'
 import { useAppData } from '../hooks/useAppData.jsx'
+import { useAuth } from '../hooks/useAuth.jsx'
+import { visibleAccount } from '../lib/auth/session.js'
 import { flattenItineraryItems } from '../lib/itinerary.js'
 import { greetingForTime, todayIso } from '../lib/dates.js'
 import { HOME_CURRENCY } from '../lib/currency.js'
+import {
+  checklistProgress,
+  checklistRowsForTripUser,
+  packingPercent,
+  packingProgress,
+  packingRowsForTripUser,
+} from '../lib/planning.js'
 import { getNextTrip, getTripSpending, getTripStatus, getUpcomingTrips } from '../lib/trips.js'
 
 function formatToday(now = new Date()) {
@@ -46,10 +55,12 @@ function upcomingItineraryItems(itinerary, places, today = todayIso()) {
 }
 
 export function DashboardPage() {
-  const { currentUser, trips, expenses, itineraries, places, activities, users } = useAppData()
+  const { currentUser, trips, expenses, itineraries, places, activities, users, packingItems, checklistItems } =
+    useAppData()
+  const { identity } = useAuth()
+  const account = visibleAccount(identity)
   const { openAction } = useQuickAdd()
   const nextTrip = getNextTrip(trips)
-  const firstName = currentUser.name.split(' ')[0]
   const nextItinerary = nextTrip ? itineraries.find((entry) => entry.tripId === nextTrip.id) : null
   const itineraryItems = upcomingItineraryItems(nextItinerary, places)
   const otherTrips = railTrips(trips, nextTrip)
@@ -64,20 +75,44 @@ export function DashboardPage() {
     .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
     .slice(0, 6)
   const noteHref = nextTrip ? `/trips/${nextTrip.id}?notes=1` : trips[0] ? `/trips/${trips[0].id}?notes=1` : ''
+  const nextPackingItems = nextTrip
+    ? packingRowsForTripUser(packingItems, nextTrip.id, currentUser.id)
+    : []
+  const nextPacking = packingProgress(nextPackingItems)
+  const nextPackingPercent = packingPercent(nextPackingItems)
+  const nextChecklist = nextTrip
+    ? checklistProgress(checklistRowsForTripUser(checklistItems, nextTrip.id, currentUser.id))
+    : { done: 0, total: 0 }
 
   return (
     <div>
       <header>
         <p className="text-[11px] tracking-[0.18em] text-ink-subtle uppercase">{greetingForTime()}</p>
         <h1 className="font-display mt-2 text-[34px] leading-[1.05] tracking-[-0.04em] text-ink sm:text-[44px]">
-          {firstName}
+          {account.greeting || '—'}
         </h1>
         <p className="mt-2 text-[14px] text-ink-muted">{formatToday()}</p>
       </header>
 
       <div className="mt-9 sm:mt-11">
         {nextTrip ? (
-          <UpcomingHero trip={nextTrip} />
+          <UpcomingHero
+            trip={nextTrip}
+            packing={
+              nextPacking.total
+                ? { percent: nextPackingPercent, href: `/trips/${nextTrip.id}?packing=1` }
+                : null
+            }
+            checklist={
+              nextChecklist.total
+                ? {
+                    done: nextChecklist.done,
+                    total: nextChecklist.total,
+                    href: `/trips/${nextTrip.id}?checklist=1`,
+                  }
+                : null
+            }
+          />
         ) : (
           <EmptyState
             className="px-6 py-14"

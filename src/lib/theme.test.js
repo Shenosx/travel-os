@@ -30,3 +30,11 @@ test('missing theme falls back to system preference', () => {
   assert.equal(resolveTheme(null, true), 'dark')
   assert.equal(resolveTheme(null, false), 'light')
 })
+
+test('system preference stays stored and resolves from the device', () => {
+  installStorage()
+  writeStoredTheme('system')
+  assert.equal(readStoredTheme(), 'system')
+  assert.equal(resolveTheme('system', true), 'dark')
+  assert.equal(resolveTheme('system', false), 'light')
+})

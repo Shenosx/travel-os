@@ -406,6 +406,8 @@ test('legacy V1 snapshot without personal collections hydrates empty arrays', ()
     assert.equal(Object.hasOwn(legacy, name), false)
     assert.deepEqual(loaded[name], [])
   }
+  assert.equal(Object.hasOwn(legacy, 'repayments'), false)
+  assert.deepEqual(loaded.repayments, [])
   assert.deepEqual(loaded.trips, seed.trips)
   assert.deepEqual(loaded.expenses, seed.expenses)
   assert.deepEqual(loaded.places, seed.places)

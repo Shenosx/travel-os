@@ -8,6 +8,9 @@ import {
   canDeletePlace,
   canEditBooking,
   canEditExpense,
+  canEditChecklist,
+  canEditNotes,
+  canEditPacking,
   canEditPlace,
   canOnTrip,
   canRemoveMember,
@@ -40,6 +43,9 @@ test('owner has full trip and member permissions', () => {
   assert.equal(canOnTrip(vienna, 'user-jamie', 'manageMembers'), true)
   assert.equal(canEditExpense(vienna, 'user-jamie', alexHotel), true)
   assert.equal(canDeleteExpense(vienna, 'user-jamie', alexHotel), true)
+  assert.equal(canEditPacking(vienna, 'user-jamie'), true)
+  assert.equal(canEditChecklist(vienna, 'user-jamie'), true)
+  assert.equal(canEditNotes(vienna, 'user-jamie'), true)
 })
 
 test('editor can edit itinerary and own expenses, not members', () => {
@@ -50,6 +56,9 @@ test('editor can edit itinerary and own expenses, not members', () => {
   assert.equal(canEditExpense(vienna, 'user-alex', alexHotel), true)
   assert.equal(canEditExpense(vienna, 'user-alex', jamieFlights), false)
   assert.equal(canDeleteExpense(vienna, 'user-alex', jamieFlights), false)
+  assert.equal(canEditPacking(vienna, 'user-alex'), true)
+  assert.equal(canEditChecklist(vienna, 'user-alex'), true)
+  assert.equal(canEditNotes(vienna, 'user-alex'), true)
 })
 
 test('viewer is read-only', () => {
@@ -63,6 +72,9 @@ test('viewer is read-only', () => {
   assert.equal(canEditBooking(vienna, 'user-jason', alexBooking), false)
   assert.equal(canEditExpense(vienna, 'user-jason', alexHotel), false)
   assert.equal(can(getMemberRole(vienna, 'user-jason'), 'deleteTrip'), false)
+  assert.equal(canEditPacking(vienna, 'user-jason'), false)
+  assert.equal(canEditChecklist(vienna, 'user-jason'), false)
+  assert.equal(canEditNotes(vienna, 'user-jason'), false)
 })
 
 test('editor can edit places and bookings, and delete only their own', () => {

@@ -12,6 +12,7 @@ import { PeoplePanel } from '../components/trip/PeoplePanel.jsx'
 import { TripOverview } from '../components/trip/TripOverview.jsx'
 import { MoveToCloudSheet } from '../components/trips/MoveToCloudSheet.jsx'
 import { TripInsights } from '../components/trip/TripInsights.jsx'
+import { ExportPdfButton } from '../components/trip/ExportPdfButton.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { Card } from '../components/ui/Card.jsx'
 import { Tabs } from '../components/ui/Tabs.jsx'
@@ -20,15 +21,16 @@ import { useAuth } from '../hooks/useAuth.jsx'
 import { isOpenInvitation, openInvitationsForEmail } from '../lib/collaboration.js'
 import { formatDateRange, resolveSelectedCalendarDate } from '../lib/dates.js'
 import { CALENDAR_VIEWS, ITINERARY_VIEWS } from '../lib/itinerary.js'
-import {
-  getBalances,
-  getExpenseActorIds,
-  getExpensesForTrip,
-  getSettlements,
-  getSpendingSummary,
-  getUserSettlement,
-} from '../lib/expenses.js'
+import { getExpensesForTrip, getSpendingSummary } from '../lib/expenses.js'
 import { membersForTrip, peopleForTrip } from '../lib/people.js'
+import {
+  checklistProgress,
+  checklistRowsForTripUser,
+  notesForTripUser,
+  packingPercent,
+  packingProgress,
+  packingRowsForTripUser,
+} from '../lib/planning.js'
 import { describeTripCountdown, getTripSpending, STATUS_LABEL } from '../lib/trips.js'
 
 const TABS = [
@@ -52,6 +54,12 @@ export function TripDetailsPage() {
     places,
     bookings,
     users,
+    packingItems,
+    packingCategories,
+    checklistItems,
+    checklistCategories,
+    notes,
+    repayments,
     currentUser,
     invitations,
     polls,
@@ -113,6 +121,18 @@ export function TripDetailsPage() {
     writeTripParams({ tab: next, view: next === 'itinerary' ? itineraryView : 'list' })
   }
 
+  function openPacking() {
+    setParams({ packing: '1' }, { replace: true })
+  }
+
+  function openChecklist() {
+    setParams({ checklist: '1' }, { replace: true })
+  }
+
+  function openNotes() {
+    setParams({ notes: '1' }, { replace: true })
+  }
+
   function setPlaceSelection(placeId, extra = {}) {
     writeTripParams({
       tab: extra.tab ?? (tab === 'overview' ? 'places' : tab),
@@ -167,19 +187,16 @@ export function TripDetailsPage() {
   const tripPlaces = places.filter((place) => place.tripId === trip.id)
   const tripBookings = bookings.filter((booking) => booking.tripId === trip.id)
   const tripExpenses = getExpensesForTrip(expenses, trip.id)
+  const tripPackingItems = packingRowsForTripUser(packingItems, trip.id, currentUser.id)
+  const packing = {
+    ...packingProgress(tripPackingItems),
+    percent: packingPercent(tripPackingItems),
+  }
+  const tripChecklistItems = checklistRowsForTripUser(checklistItems, trip.id, currentUser.id)
+  const checklist = checklistProgress(tripChecklistItems)
+  const tripNotes = notesForTripUser(notes, trip.id, currentUser.id)
   const people = peopleForTrip(trip, tripExpenses, users)
-  const finance = (() => {
-    const actorIds = getExpenseActorIds(tripExpenses, trip.members.map((member) => member.userId))
-    const balances = getBalances(tripExpenses, actorIds)
-    const transfers = getSettlements(balances)
-    const userSettlement = getUserSettlement(transfers, currentUser.id)
-    const summary = getSpendingSummary(tripExpenses, currentUser.id)
-    return {
-      ...summary,
-      youOweTotal: userSettlement.youOweTotal,
-      youReceiveTotal: userSettlement.youReceiveTotal,
-    }
-  })()
+  const finance = getSpendingSummary(tripExpenses, currentUser.id)
   const poll = polls.find((item) => item.tripId === trip.id)
   const recentActivity = activities
     .filter((activity) => activity.tripId === trip.id)
@@ -204,7 +221,7 @@ export function TripDetailsPage() {
               · {trip.visibility === 'shared' ? 'Shared' : 'Personal'}
             </span>
           </p>
-          <h1 className="font-display mt-3 text-[40px] leading-[1.02] tracking-[-0.045em] text-ink sm:text-[56px]">
+          <h1 className="font-display mt-3 break-words text-[40px] leading-[1.02] tracking-[-0.045em] text-ink sm:text-[56px]">
             {trip.city || trip.destination}
           </h1>
           {trip.country ? <p className="mt-2 text-[15px] text-ink-muted">{trip.country}</p> : null}
@@ -225,11 +242,30 @@ export function TripDetailsPage() {
           ) : countdown.status === 'ongoing' ? (
             <p className="font-display text-[22px] tracking-[-0.03em] text-ink">{countdown.label}</p>
           ) : null}
-          {configured && cloudUser ? (
-            <Button variant="outline" onClick={() => setMigrateOpen(true)}>
-              Move to Cloud
-            </Button>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-3">
+            <ExportPdfButton
+              input={{
+                trip,
+                itinerary,
+                places: tripPlaces,
+                bookings: tripBookings,
+                expenses: tripExpenses,
+                repayments,
+                users,
+                currentUserId: currentUser.id,
+                packingCategories,
+                packingItems,
+                checklistCategories,
+                checklistItems,
+                notes,
+              }}
+            />
+            {configured && cloudUser ? (
+              <Button variant="outline" onClick={() => setMigrateOpen(true)}>
+                Move to Cloud
+              </Button>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -239,11 +275,11 @@ export function TripDetailsPage() {
 
       <div className="mt-8">
         {packingOpen ? (
-          <PackingView tripId={trip.id} />
+          <PackingView tripId={trip.id} canEdit={permissions.canEditPacking} />
         ) : checklistOpen ? (
-          <ChecklistView tripId={trip.id} />
+          <ChecklistView tripId={trip.id} canEdit={permissions.canEditChecklist} />
         ) : notesOpen ? (
-          <NotesView tripId={trip.id} />
+          <NotesView tripId={trip.id} canEdit={permissions.canEditNotes} />
         ) : (
           <>
         {tab === 'overview' ? (
@@ -266,6 +302,12 @@ export function TripDetailsPage() {
             onVote={(optionId) => votePoll(poll.id, optionId)}
             onOpenTab={setTab}
             onOpenPlace={(placeId) => setPlaceSelection(placeId, { tab: 'places' })}
+            packing={packing}
+            onOpenPacking={openPacking}
+            checklist={checklist}
+            onOpenChecklist={openChecklist}
+            notesCount={tripNotes.length}
+            onOpenNotes={openNotes}
             onOpenBooking={(bookingId) =>
               setParams({ tab: 'bookings', booking: bookingId }, { replace: true })
             }

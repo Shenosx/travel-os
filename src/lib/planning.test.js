@@ -7,6 +7,7 @@ import {
   CHECKLIST_PHASE_IDS,
   DEFAULT_CHECKLIST_CATEGORIES_BY_PHASE,
   DEFAULT_PACKING_CATEGORY_NAMES,
+  checklistCategoryProgress,
   checklistPhaseProgress,
   checklistProgress,
   checklistRowsForTripUser,
@@ -25,6 +26,8 @@ import {
   isChecklistPhase,
   isIsoDate,
   moveIdInOrder,
+  packingCategoryProgress,
+  packingPercent,
   packingProgress,
   packingRowsForTripUser,
   parseQuantity,
@@ -448,6 +451,7 @@ test('create note requires a trimmed body and allows optional title', () => {
   assert.equal(created.note.title, 'Market')
   assert.equal(created.note.body, 'Quiet street')
   assert.equal(created.note.date, null)
+  assert.equal('pinned' in created.note, false)
   assert.equal(createNote([], { tripId: VIENNA, userId: JAMIE, body: '   ' }, { now: NOW }).note, null)
   assert.equal(createNote([], { tripId: VIENNA, userId: JAMIE }, { now: NOW }).note, null)
 })
@@ -870,6 +874,7 @@ test('packing item reorder stays inside its category', () => {
 
 test('packing progress is derived from items and zero-item state is 0 / 0', () => {
   assert.deepEqual(packingProgress([]), { packed: 0, total: 0 })
+  assert.equal(packingPercent([]), 0)
   const seeded = seedDefaultPackingCategories([], VIENNA, JAMIE, { now: NOW })
   const tripItems = packingRowsForTripUser([], VIENNA, JAMIE)
   assert.deepEqual(packingProgress(tripItems), { packed: 0, total: 0 })
@@ -881,6 +886,36 @@ test('packing progress is derived from items and zero-item state is 0 / 0', () =
     { now: NOW, id: 'pitem-1' },
   )
   assert.deepEqual(packingProgress(created.items), { packed: 0, total: 1 })
+  assert.equal(packingPercent(created.items), 0)
+})
+
+test('category progress uses only that category items', () => {
+  const seeded = seedDefaultPackingCategories([], VIENNA, JAMIE, { now: NOW })
+  const clothing = sortByPackingOrder(seeded.categories)[0]
+  const electronics = sortByPackingOrder(seeded.categories)[2]
+  const first = createPackingItem(
+    [],
+    seeded.categories,
+    { tripId: VIENNA, userId: JAMIE, categoryId: clothing.id, name: 'T-shirts' },
+    { now: NOW, id: 'pitem-tee' },
+  )
+  const second = createPackingItem(
+    first.items,
+    seeded.categories,
+    { tripId: VIENNA, userId: JAMIE, categoryId: clothing.id, name: 'Jacket' },
+    { now: NOW, id: 'pitem-jacket' },
+  )
+  const third = createPackingItem(
+    second.items,
+    seeded.categories,
+    { tripId: VIENNA, userId: JAMIE, categoryId: electronics.id, name: 'Charger' },
+    { now: NOW, id: 'pitem-charger' },
+  )
+  const packed = togglePackingItemPacked(third.items, 'pitem-tee', JAMIE, NOW)
+  assert.deepEqual(packingCategoryProgress(packed.items, clothing.id), { packed: 1, total: 2 })
+  assert.deepEqual(packingCategoryProgress(packed.items, electronics.id), { packed: 0, total: 1 })
+  assert.deepEqual(packingProgress(packed.items), { packed: 1, total: 3 })
+  assert.equal(packingPercent(packed.items), 33)
 })
 
 test('different trip does not show previous trip packing items', () => {
@@ -1139,6 +1174,8 @@ test('phase and overall checklist progress are derived including zero items', ()
   assert.deepEqual(checklistProgress(toggled.items), { done: 1, total: 2 })
   assert.deepEqual(checklistPhaseProgress(seeded.categories, toggled.items, 'before'), { done: 1, total: 1 })
   assert.deepEqual(checklistPhaseProgress(seeded.categories, toggled.items, 'packing'), { done: 0, total: 1 })
+  assert.deepEqual(checklistCategoryProgress(toggled.items, docs.id), { done: 1, total: 1 })
+  assert.deepEqual(checklistCategoryProgress(toggled.items, prep.id), { done: 0, total: 1 })
 })
 
 test('wrong-user and wrong-trip checklist isolation', () => {

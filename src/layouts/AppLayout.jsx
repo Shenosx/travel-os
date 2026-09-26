@@ -22,9 +22,9 @@ export function AppLayout() {
               <CloudSyncProvider>
                 <div className="min-h-svh bg-canvas text-ink">
                   <Sidebar />
-                  <div className="lg:pl-[232px]">
+                  <div className="min-w-0 lg:pl-[232px]">
                     <MobileHeader />
-                    <main className="mx-auto w-full max-w-[1080px] px-5 pt-6 pb-28 lg:px-12 lg:pt-10 lg:pb-16">
+                    <main className="mx-auto w-full min-w-0 max-w-[1080px] px-5 pt-6 pb-28 lg:px-12 lg:pt-10 lg:pb-16">
                       <Outlet />
                     </main>
                   </div>
@@ -43,23 +43,23 @@ function MobileHeader() {
   const { isPreviewing, setSessionUserId, homeUserId } = useAppData()
 
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-line bg-canvas/90 px-5 py-3.5 backdrop-blur-md lg:hidden">
-      <Link to="/" className="font-display text-lg tracking-[-0.03em]">
+    <header className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b border-line bg-canvas/90 px-5 py-3.5 backdrop-blur-md sm:gap-3 lg:hidden">
+      <Link to="/" className="font-display shrink-0 text-lg tracking-[-0.03em]">
         Travel OS
       </Link>
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
         {isPreviewing ? (
           <button
             type="button"
-            className="text-[12px] text-accent"
+            className="shrink-0 text-[12px] text-accent"
             onClick={() => setSessionUserId(homeUserId)}
           >
             Back to you
           </button>
         ) : null}
-        <AccountLink />
-        <CloudSyncStatus />
-        <ThemeSwitcher />
+        <AccountLink className="max-w-[6.5rem] sm:max-w-[9rem]" />
+        <CloudSyncStatus placement="below" align="end" />
+        <ThemeSwitcher compact />
       </div>
     </header>
   )

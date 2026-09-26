@@ -8,6 +8,15 @@ export function useSheetClose() {
   return useContext(SheetCloseContext)
 }
 
+export function SheetCancel({ onClose, className = 'text-sm text-ink-muted', children = 'Cancel' }) {
+  const requestClose = useSheetClose()
+  return (
+    <button type="button" className={className} onClick={() => (requestClose ?? onClose)?.()}>
+      {children}
+    </button>
+  )
+}
+
 function focusableIn(root) {
   if (!root) return []
   return [...root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(

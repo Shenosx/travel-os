@@ -237,6 +237,19 @@ export function packingProgress(items) {
   }
 }
 
+/** Whole-number packed percent. Empty lists are 0, not a fake value. */
+export function packingPercent(items) {
+  const { packed, total } = packingProgress(items)
+  if (!total) return 0
+  return Math.round((packed / total) * 100)
+}
+
+/** Same derived counts, scoped to one category. */
+export function packingCategoryProgress(items, categoryId) {
+  const list = Array.isArray(items) ? items : []
+  return packingProgress(list.filter((item) => item.categoryId === categoryId))
+}
+
 /**
  * First-open seed for one trip + user. No-op when any category already exists.
  * @param {import('../types').PackingCategory[]} categories
@@ -452,6 +465,12 @@ export function checklistItemsForPhase(categories, items, phase) {
 
 export function checklistPhaseProgress(categories, items, phase) {
   return checklistProgress(checklistItemsForPhase(categories, items, phase))
+}
+
+/** Same derived counts, scoped to one category. */
+export function checklistCategoryProgress(items, categoryId) {
+  const list = Array.isArray(items) ? items : []
+  return checklistProgress(list.filter((item) => item.categoryId === categoryId))
 }
 
 /**

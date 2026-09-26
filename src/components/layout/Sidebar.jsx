@@ -1,5 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { useAppData } from '../../hooks/useAppData.jsx'
+import { useAuth } from '../../hooks/useAuth.jsx'
+import { visibleAccount } from '../../lib/auth/session.js'
 import {
   IconDashboard,
   IconExpenses,
@@ -23,6 +25,8 @@ const ICONS = {
 
 export function Sidebar() {
   const { currentUser, isPreviewing, setSessionUserId, homeUserId } = useAppData()
+  const { identity } = useAuth()
+  const account = visibleAccount(identity)
 
   return (
     <aside className="fixed inset-y-0 left-0 hidden w-[232px] flex-col border-r border-line bg-canvas lg:flex">
@@ -59,11 +63,13 @@ export function Sidebar() {
           <ThemeSwitcher />
         </div>
         <div className="flex items-center gap-3">
-          <Avatar initials={currentUser.initials} />
+          <Avatar initials={isPreviewing ? currentUser.initials : account.initials} />
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-ink">{currentUser.name}</p>
+            <p className="truncate text-sm font-medium text-ink">
+              {isPreviewing ? currentUser.name : account.name || '—'}
+            </p>
             <p className="truncate text-[12px] text-ink-subtle">
-              {isPreviewing ? `Viewing as ${currentUser.shortName}` : currentUser.email}
+              {isPreviewing ? `Viewing as ${currentUser.shortName}` : account.email || '—'}
             </p>
           </div>
         </div>

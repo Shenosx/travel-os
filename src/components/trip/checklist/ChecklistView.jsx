@@ -1,7 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAppData } from '../../../hooks/useAppData.jsx'
 import {
   CHECKLIST_PHASES,
+  checklistCategoryProgress,
   checklistPhaseProgress,
   checklistProgress,
   checklistRowsForTripUser,
@@ -13,11 +15,12 @@ import {
 } from '../../../lib/planning.js'
 import { IconChevron } from '../../icons.jsx'
 import { Button } from '../../ui/Button.jsx'
+import { EmptyState } from '../../ui/EmptyState.jsx'
 import { Field, fieldClass, textareaClass } from '../../ui/Field.jsx'
 import { ProgressBar } from '../../ui/ProgressBar.jsx'
 import { Sheet, useSheetClose } from '../../ui/Sheet.jsx'
 
-export function ChecklistView({ tripId }) {
+export function ChecklistView({ tripId, canEdit = false }) {
   const {
     currentUser,
     checklistCategories,
@@ -42,14 +45,14 @@ export function ChecklistView({ tripId }) {
   const [confirm, setConfirm] = useState(null)
 
   useEffect(() => {
-    if (!tripId || !userId) return
+    if (!tripId || !userId || !canEdit) return
     if (seededFor.current === seedKey) return
     seededFor.current = seedKey
     setCollapsedIds([])
     setSheet(null)
     setConfirm(null)
     ensureChecklistCategories(tripId)
-  }, [ensureChecklistCategories, seedKey, tripId, userId])
+  }, [canEdit, ensureChecklistCategories, seedKey, tripId, userId])
 
   const categories = useMemo(
     () => sortByChecklistOrder(checklistRowsForTripUser(checklistCategories, tripId, userId)),
@@ -65,71 +68,114 @@ export function ChecklistView({ tripId }) {
     return sortByChecklistOrder(items.filter((item) => item.categoryId === categoryId))
   }
 
+  function openAddItem(categoryId) {
+    if (!canEdit) return
+    setSheet({ type: 'item', categoryId: categoryId || categories[0]?.id })
+  }
+
+  const sheetNode = sheet ? (
+    <ChecklistSheet
+      sheet={sheet}
+      tripId={tripId}
+      categories={categories}
+      onClose={() => setSheet(null)}
+      addChecklistCategory={addChecklistCategory}
+      updateChecklistCategory={updateChecklistCategory}
+      addChecklistItem={addChecklistItem}
+      updateChecklistItem={updateChecklistItem}
+      deleteChecklistItem={deleteChecklistItem}
+    />
+  ) : null
+
   return (
     <div className="min-w-0">
-      <div>
-        <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">Checklist</p>
-        <p className="mt-2 text-sm text-ink">
-          Overall {overall.done} / {overall.total}
-        </p>
-        <ProgressBar
-          now={overall.done}
-          max={overall.total}
-          label={`Checklist ${overall.done} of ${overall.total} done`}
-          className="mt-4"
-        />
-      </div>
+      <Link to={`/trips/${tripId}`} className="inline-flex min-h-11 items-center text-[13px] text-ink-subtle hover:text-ink">
+        ← Trip details
+      </Link>
 
-      <div className="mt-10 space-y-10">
-        {CHECKLIST_PHASES.map((phase, phaseIndex) => {
+      <header className="mt-5">
+        <h2 className="font-display text-[28px] leading-[1.05] tracking-[-0.04em] text-ink sm:text-[34px]">
+          Checklist
+        </h2>
+        {overall.total ? (
+          <>
+            <p className="mt-3 text-[15px] tabular-nums text-ink-muted">
+              {overall.done} / {overall.total} completed
+            </p>
+            <ProgressBar
+              now={overall.done}
+              max={overall.total}
+              label={`Checklist ${overall.done} of ${overall.total} completed`}
+              className="mt-5"
+            />
+          </>
+        ) : (
+          <div className="mt-8">
+            <EmptyState
+              title="No checklist items yet"
+              action={
+                canEdit ? (
+                  <button
+                    type="button"
+                    className="inline-flex min-h-11 items-center text-sm text-accent"
+                    onClick={() =>
+                      categories.length ? openAddItem() : setSheet({ type: 'category', phase: CHECKLIST_PHASES[0].id })
+                    }
+                  >
+                    Add item
+                  </button>
+                ) : null
+              }
+            />
+          </div>
+        )}
+      </header>
+
+      <div className="mt-12 space-y-12">
+        {CHECKLIST_PHASES.map((phase) => {
           const phaseCategories = categories.filter((row) => row.phase === phase.id)
           const phaseProgress = checklistPhaseProgress(phaseCategories, items, phase.id)
           const categoryIds = phaseCategories.map((category) => category.id)
           return (
-            <section
-              key={phase.id}
-              aria-labelledby={`check-phase-${phase.id}`}
-              className={phaseIndex === 0 ? '' : 'border-t border-line pt-10'}
-            >
+            <section key={phase.id} aria-labelledby={`check-phase-${phase.id}`} className="min-w-0">
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">
-                    {String(phaseIndex + 1).padStart(2, '0')}
-                  </p>
                   <h3
                     id={`check-phase-${phase.id}`}
-                    className="font-display mt-1 text-[26px] tracking-[-0.03em] text-ink"
+                    className="font-display text-[26px] tracking-[-0.03em] text-ink"
                   >
                     {phase.label}
                   </h3>
-                  <p className="mt-1 text-sm text-ink-subtle">
-                    {phaseProgress.done} / {phaseProgress.total} done
+                  <p className="mt-1 text-[13px] tabular-nums text-ink-subtle">
+                    {phaseProgress.done} / {phaseProgress.total}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  className="inline-flex min-h-11 items-center text-sm text-accent"
-                  onClick={() => setSheet({ type: 'category', phase: phase.id })}
-                >
-                  + Add category
-                </button>
+                {canEdit ? (
+                  <button
+                    type="button"
+                    className="inline-flex min-h-11 items-center text-sm text-accent"
+                    onClick={() => setSheet({ type: 'category', phase: phase.id })}
+                  >
+                    + Add category
+                  </button>
+                ) : null}
               </div>
               <ProgressBar
                 now={phaseProgress.done}
                 max={phaseProgress.total}
-                label={`${phase.label} ${phaseProgress.done} of ${phaseProgress.total} done`}
+                label={`${phase.label} ${phaseProgress.done} of ${phaseProgress.total} completed`}
                 className="mt-3"
               />
 
               {phaseCategories.length ? (
-                <ul className="mt-4 divide-y divide-line">
+                <ul className="mt-6 grid gap-10 lg:grid-cols-2">
                   {phaseCategories.map((category, index) => {
                     const categoryItems = itemsFor(category.id)
                     const expanded = !collapsedIds.includes(category.id)
                     const itemIds = categoryItems.map((item) => item.id)
-                    const categoryProgress = checklistProgress(categoryItems)
+                    const categoryProgress = checklistCategoryProgress(items, category.id)
                     return (
-                      <li key={category.id} className="py-5">
+                      <li key={category.id} className="min-w-0">
                         <div className="flex items-start gap-1">
                           <button
                             type="button"
@@ -143,49 +189,71 @@ export function ChecklistView({ tripId }) {
                             <span className="font-display min-w-0 break-words text-[20px] tracking-[-0.03em] text-ink">
                               {category.name}
                             </span>
-                            <span className="shrink-0 text-[12px] tabular-nums text-ink-subtle">
-                              {categoryProgress.done}/{categoryProgress.total}
-                            </span>
                           </button>
-                          <button
-                            type="button"
-                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-ink-muted hover:text-ink disabled:opacity-30"
-                            aria-label={`Move ${category.name} up`}
-                            disabled={index === 0}
-                            onClick={() =>
-                              reorderChecklistCategories(tripId, phase.id, moveIdInOrder(categoryIds, category.id, -1))
-                            }
-                          >
-                            ↑
-                          </button>
-                          <button
-                            type="button"
-                            className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-ink-muted hover:text-ink disabled:opacity-30"
-                            aria-label={`Move ${category.name} down`}
-                            disabled={index === phaseCategories.length - 1}
-                            onClick={() =>
-                              reorderChecklistCategories(tripId, phase.id, moveIdInOrder(categoryIds, category.id, 1))
-                            }
-                          >
-                            ↓
-                          </button>
+                          {canEdit ? (
+                            <>
+                              <button
+                                type="button"
+                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-ink-muted hover:text-ink disabled:opacity-30"
+                                aria-label={`Move ${category.name} up`}
+                                disabled={index === 0}
+                                onClick={() =>
+                                  reorderChecklistCategories(
+                                    tripId,
+                                    phase.id,
+                                    moveIdInOrder(categoryIds, category.id, -1),
+                                  )
+                                }
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-ink-muted hover:text-ink disabled:opacity-30"
+                                aria-label={`Move ${category.name} down`}
+                                disabled={index === phaseCategories.length - 1}
+                                onClick={() =>
+                                  reorderChecklistCategories(
+                                    tripId,
+                                    phase.id,
+                                    moveIdInOrder(categoryIds, category.id, 1),
+                                  )
+                                }
+                              >
+                                ↓
+                              </button>
+                            </>
+                          ) : null}
                         </div>
+                        <p className="mt-2 text-[13px] tabular-nums text-ink-subtle">
+                          {categoryProgress.done} / {categoryProgress.total}
+                        </p>
+                        <ProgressBar
+                          now={categoryProgress.done}
+                          max={categoryProgress.total}
+                          label={`${category.name} ${categoryProgress.done} of ${categoryProgress.total} completed`}
+                          className="mt-3"
+                        />
 
                         {expanded ? (
-                          <div className="mt-3">
+                          <div className="mt-4">
                             {categoryItems.length ? (
                               <ul>
                                 {categoryItems.map((item, itemIndex) => (
                                   <ChecklistItemRow
                                     key={item.id}
                                     item={item}
+                                    canEdit={canEdit}
                                     isFirst={itemIndex === 0}
                                     isLast={itemIndex === categoryItems.length - 1}
-                                    onToggle={() => toggleChecklistItemDone(item.id)}
+                                    onToggle={() => canEdit && toggleChecklistItemDone(item.id)}
                                     onMove={(delta) =>
+                                      canEdit &&
                                       reorderChecklistItems(category.id, moveIdInOrder(itemIds, item.id, delta))
                                     }
-                                    onEdit={() => setSheet({ type: 'item', categoryId: category.id, item })}
+                                    onEdit={() =>
+                                      canEdit && setSheet({ type: 'item', categoryId: category.id, item })
+                                    }
                                   />
                                 ))}
                               </ul>
@@ -193,147 +261,138 @@ export function ChecklistView({ tripId }) {
                               <p className="px-1 text-[13px] text-ink-subtle">No tasks yet.</p>
                             )}
 
-                            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
-                              <button
-                                type="button"
-                                className="inline-flex min-h-11 items-center text-sm text-accent"
-                                onClick={() => setSheet({ type: 'item', categoryId: category.id })}
-                              >
-                                + Add item
-                              </button>
-                              <button
-                                type="button"
-                                className="inline-flex min-h-11 items-center text-sm text-ink-muted"
-                                onClick={() => setSheet({ type: 'category', phase: phase.id, category })}
-                              >
-                                Rename
-                              </button>
-                              {confirm?.id === category.id ? (
-                                <span
-                                  role="alertdialog"
-                                  aria-labelledby={`check-del-${category.id}`}
-                                  className="flex flex-wrap items-center gap-3"
+                            {canEdit ? (
+                              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+                                <button
+                                  type="button"
+                                  className="inline-flex min-h-11 items-center text-sm text-accent"
+                                  onClick={() => openAddItem(category.id)}
                                 >
-                                  <span id={`check-del-${category.id}`} className="text-sm text-ink">
-                                    Delete {category.name} and {categoryItems.length}{' '}
-                                    {categoryItems.length === 1 ? 'item' : 'items'}?
+                                  + Add item
+                                </button>
+                                <button
+                                  type="button"
+                                  className="inline-flex min-h-11 items-center text-sm text-ink-muted"
+                                  onClick={() => setSheet({ type: 'category', phase: phase.id, category })}
+                                >
+                                  Rename
+                                </button>
+                                {confirm?.id === category.id ? (
+                                  <span
+                                    role="alertdialog"
+                                    aria-labelledby={`check-del-${category.id}`}
+                                    className="flex flex-wrap items-center gap-3"
+                                  >
+                                    <span id={`check-del-${category.id}`} className="text-sm text-ink">
+                                      Delete {category.name} and {categoryItems.length}{' '}
+                                      {categoryItems.length === 1 ? 'item' : 'items'}?
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="text-sm text-ink-subtle"
+                                      onClick={() => setConfirm(null)}
+                                    >
+                                      Keep
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="text-sm text-accent"
+                                      onClick={() => {
+                                        deleteChecklistCategory(category.id)
+                                        setConfirm(null)
+                                      }}
+                                    >
+                                      Delete
+                                    </button>
                                   </span>
-                                  <button type="button" className="text-sm text-ink-subtle" onClick={() => setConfirm(null)}>
-                                    Keep
-                                  </button>
+                                ) : (
                                   <button
                                     type="button"
-                                    className="text-sm text-accent"
+                                    className="inline-flex min-h-11 items-center text-sm text-ink-subtle"
                                     onClick={() => {
-                                      deleteChecklistCategory(category.id)
-                                      setConfirm(null)
+                                      if (categoryItems.length) setConfirm({ id: category.id })
+                                      else deleteChecklistCategory(category.id)
                                     }}
                                   >
                                     Delete
                                   </button>
-                                </span>
-                              ) : (
-                                <button
-                                  type="button"
-                                  className="inline-flex min-h-11 items-center text-sm text-ink-subtle"
-                                  onClick={() => {
-                                    if (categoryItems.length) setConfirm({ id: category.id })
-                                    else deleteChecklistCategory(category.id)
-                                  }}
-                                >
-                                  Delete
-                                </button>
-                              )}
-                            </div>
+                                )}
+                              </div>
+                            ) : null}
                           </div>
                         ) : null}
                       </li>
                     )
                   })}
                 </ul>
-              ) : (
-                <div className="mt-5">
-                  <p className="text-[13px] text-ink-subtle">No categories yet.</p>
-                  <button
-                    type="button"
-                    className="mt-1 inline-flex min-h-11 items-center text-sm text-accent"
-                    onClick={() => setSheet({ type: 'category', phase: phase.id })}
-                  >
-                    + Add category
-                  </button>
-                </div>
-              )}
+              ) : canEdit ? (
+                <p className="mt-5 text-[13px] text-ink-subtle">No categories yet.</p>
+              ) : null}
             </section>
           )
         })}
       </div>
 
-      {sheet ? (
-        <ChecklistSheet
-          sheet={sheet}
-          tripId={tripId}
-          onClose={() => setSheet(null)}
-          addChecklistCategory={addChecklistCategory}
-          updateChecklistCategory={updateChecklistCategory}
-          addChecklistItem={addChecklistItem}
-          updateChecklistItem={updateChecklistItem}
-          deleteChecklistItem={deleteChecklistItem}
-        />
-      ) : null}
+      {sheetNode}
     </div>
   )
 }
 
-function ChecklistItemRow({ item, isFirst, isLast, onToggle, onMove, onEdit }) {
+function ChecklistItemRow({ item, canEdit, isFirst, isLast, onToggle, onMove, onEdit }) {
   const checkboxId = useId()
   const note = item.note?.trim()
 
   return (
-    <li className="flex items-start gap-1 py-1">
+    <li className="flex min-w-0 items-start gap-1 py-1">
       <label
         htmlFor={checkboxId}
-        className="inline-flex min-h-10 min-w-10 shrink-0 cursor-pointer items-center justify-center"
+        className={`inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center ${canEdit ? 'cursor-pointer' : ''}`}
       >
         <input
           id={checkboxId}
           type="checkbox"
           checked={Boolean(item.done)}
           onChange={onToggle}
+          disabled={!canEdit}
           className="h-4 w-4 accent-[var(--accent)]"
         />
       </label>
-      <label htmlFor={checkboxId} className="min-w-0 flex-1 cursor-pointer py-2">
-        <span className={`block break-words text-sm ${item.done ? 'text-ink-muted' : 'text-ink'}`}>{item.name}</span>
+      <label htmlFor={checkboxId} className={`min-w-0 flex-1 py-2 ${canEdit ? 'cursor-pointer' : ''}`}>
+        <span className={`block break-words text-sm ${item.done ? 'text-ink-subtle' : 'text-ink'}`}>{item.name}</span>
         {item.dueDate ? (
           <span className="mt-0.5 block text-[12px] tabular-nums text-ink-subtle">Due {item.dueDate}</span>
         ) : null}
         {note ? <span className="mt-0.5 block break-words text-[12px] text-ink-subtle">{note}</span> : null}
       </label>
-      <button
-        type="button"
-        className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-ink-muted hover:text-ink disabled:opacity-30"
-        aria-label={`Move ${item.name} up`}
-        disabled={isFirst}
-        onClick={() => onMove(-1)}
-      >
-        ↑
-      </button>
-      <button
-        type="button"
-        className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-ink-muted hover:text-ink disabled:opacity-30"
-        aria-label={`Move ${item.name} down`}
-        disabled={isLast}
-        onClick={() => onMove(1)}
-      >
-        ↓
-      </button>
-      <button
-        type="button"
-        className="inline-flex min-h-10 shrink-0 items-center px-1 text-[13px] text-ink-muted"
-        onClick={onEdit}
-      >
-        Edit
-      </button>
+      {canEdit ? (
+        <>
+          <button
+            type="button"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-ink-muted hover:text-ink disabled:opacity-30"
+            aria-label={`Move ${item.name} up`}
+            disabled={isFirst}
+            onClick={() => onMove(-1)}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center text-ink-muted hover:text-ink disabled:opacity-30"
+            aria-label={`Move ${item.name} down`}
+            disabled={isLast}
+            onClick={() => onMove(1)}
+          >
+            ↓
+          </button>
+          <button
+            type="button"
+            className="inline-flex min-h-11 shrink-0 items-center px-2 text-[13px] text-ink-muted"
+            onClick={onEdit}
+          >
+            Edit
+          </button>
+        </>
+      ) : null}
     </li>
   )
 }
@@ -341,6 +400,7 @@ function ChecklistItemRow({ item, isFirst, isLast, onToggle, onMove, onEdit }) {
 function ChecklistSheet({
   sheet,
   tripId,
+  categories,
   onClose,
   addChecklistCategory,
   updateChecklistCategory,
@@ -356,13 +416,16 @@ function ChecklistSheet({
     : sheet.category
       ? 'Rename category'
       : 'Add category'
+  const [dirty, setDirty] = useState(false)
 
   return (
-    <Sheet title={title} kicker="Checklist" onClose={onClose}>
+    <Sheet title={title} kicker="Checklist" onClose={onClose} dirty={dirty}>
+      <div onChange={() => setDirty(true)}>
       {isItem ? (
         <ChecklistItemForm
           tripId={tripId}
           categoryId={sheet.categoryId}
+          categories={categories}
           item={sheet.item}
           onClose={onClose}
           addChecklistItem={addChecklistItem}
@@ -379,6 +442,7 @@ function ChecklistSheet({
           updateChecklistCategory={updateChecklistCategory}
         />
       )}
+      </div>
     </Sheet>
   )
 }
@@ -432,6 +496,7 @@ function ChecklistCategoryForm({
 function ChecklistItemForm({
   tripId,
   categoryId,
+  categories,
   item,
   onClose,
   addChecklistItem,
@@ -439,7 +504,13 @@ function ChecklistItemForm({
   deleteChecklistItem,
 }) {
   const requestClose = useSheetClose()
+  const currentCategory = categories.find((row) => row.id === (item?.categoryId ?? categoryId))
+  const phase = currentCategory?.phase
+  const categoryOptions = phase ? categories.filter((row) => row.phase === phase) : categories
   const [name, setName] = useState(item?.name ?? '')
+  const [selectedCategoryId, setSelectedCategoryId] = useState(
+    item?.categoryId ?? categoryId ?? categoryOptions[0]?.id ?? '',
+  )
   const [dueDate, setDueDate] = useState(item?.dueDate ?? '')
   const [note, setNote] = useState(item?.note ?? '')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -455,10 +526,21 @@ function ChecklistItemForm({
     event.preventDefault()
     const trimmed = name.trim()
     const due = parsedDueDate()
-    if (!trimmed || !due.ok) return
+    if (!trimmed || !due.ok || !selectedCategoryId) return
     const saved = item
-      ? updateChecklistItem(item.id, { name: trimmed, dueDate: due.dueDate, note })
-      : addChecklistItem({ tripId, categoryId, name: trimmed, dueDate: due.dueDate, note })
+      ? updateChecklistItem(item.id, {
+          name: trimmed,
+          dueDate: due.dueDate,
+          note,
+          categoryId: selectedCategoryId,
+        })
+      : addChecklistItem({
+          tripId,
+          categoryId: selectedCategoryId,
+          name: trimmed,
+          dueDate: due.dueDate,
+          note,
+        })
     if (!saved) return
     onClose()
   }
@@ -467,7 +549,7 @@ function ChecklistItemForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <Field label="Name">
+      <Field label="Item name">
         <input
           className={fieldClass}
           value={name}
@@ -476,6 +558,22 @@ function ChecklistItemForm({
           autoFocus
         />
       </Field>
+      {categoryOptions.length ? (
+        <Field label="Category">
+          <select
+            className={fieldClass}
+            value={selectedCategoryId}
+            onChange={(event) => setSelectedCategoryId(event.target.value)}
+            required
+          >
+            {categoryOptions.map((category) => (
+              <option key={category.id} value={category.id}>
+                {phaseLabel(category.phase)} · {category.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
       <Field label="Due date">
         <input
           className={fieldClass}
@@ -530,4 +628,8 @@ function ChecklistItemForm({
       </div>
     </form>
   )
+}
+
+function phaseLabel(phase) {
+  return CHECKLIST_PHASES.find((item) => item.id === phase)?.label ?? phase
 }

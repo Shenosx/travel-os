@@ -1,12 +1,16 @@
-import { displayName } from '../../data/mock.js'
+import { useMemo, useState } from 'react'
 import { formatMoney } from '../../lib/format.js'
-import { getBalances, getExpenseActorIds, getSettlements, getSpendingSummary, getUserSettlement } from '../../lib/expenses.js'
+import { CATEGORY_LABEL, getSpendByCategory, getSpendingSummary } from '../../lib/expenses.js'
+import { canDeleteRepayment } from '../../lib/permissions.js'
+import { getMySpending, getOutstandingDebts, getUserOutstanding, isSharedTrip } from '../../lib/repayments.js'
+import { useAppData } from '../../hooks/useAppData.jsx'
 import { useExpenseComposer } from '../expenses/ExpenseComposer.jsx'
 import { ExpenseRow } from '../expenses/ExpenseRow.jsx'
-import { SettlementPanel } from '../expenses/SettlementPanel.jsx'
-import { Avatar } from '../ui/Avatar.jsx'
-import { Card } from '../ui/Card.jsx'
+import { PaySheet } from '../expenses/PaySheet.jsx'
+import { SettlementLedger } from '../expenses/SettlementLedger.jsx'
 import { EmptyState } from '../ui/EmptyState.jsx'
+import { ProgressBar } from '../ui/ProgressBar.jsx'
+import { useToast } from '../ui/Toast.jsx'
 
 export function ExpensePanel({
   trip,
@@ -17,13 +21,22 @@ export function ExpensePanel({
   canAdd = true,
   canEditExpense = () => true,
 }) {
+  const { repayments, addRepayment, deleteRepayment, restoreRepayment } = useAppData()
   const { openCreate, openEdit } = useExpenseComposer()
-  const actorIds = getExpenseActorIds(expenses, members.filter((member) => !member.former).map((member) => member.userId))
-  const balances = getBalances(expenses, actorIds)
-  const transfers = getSettlements(balances)
-  const userSettlement = getUserSettlement(transfers, currentUserId)
+  const showToast = useToast()
+  const shared = isSharedTrip(trip)
+  const [spendView, setSpendView] = useState('everyone')
+  const [payDraft, setPayDraft] = useState(null)
+
+  const tripRepayments = useMemo(
+    () => repayments.filter((item) => item.tripId === trip.id),
+    [repayments, trip.id],
+  )
   const summary = getSpendingSummary(expenses, currentUserId)
-  const balancePeople = actorIds.map((userId) => members.find((member) => member.userId === userId)).filter(Boolean)
+  const mySpending = getMySpending(expenses, currentUserId)
+  const outstanding = getUserOutstanding(getOutstandingDebts(expenses, tripRepayments), currentUserId)
+  const categories = spendView === 'mine' ? mySpending.byCategory : getSpendByCategory(expenses)
+  const maxCategory = categories[0]?.amount ?? 1
 
   if (!expenses.length) {
     return (
@@ -47,7 +60,7 @@ export function ExpensePanel({
         <div>
           <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">Trip spending</p>
           <p className="font-display mt-2 text-[32px] tracking-[-0.04em] tabular-nums">
-            {formatMoney(summary.total, currency)}
+            {formatMoney(spendView === 'mine' ? mySpending.total : summary.total, currency)}
           </p>
         </div>
         {canAdd ? (
@@ -57,46 +70,63 @@ export function ExpensePanel({
         ) : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Your share" value={formatMoney(summary.yourShare, currency)} />
-        <Stat label="Shared" value={formatMoney(summary.shared, currency)} />
-        <Stat label="Personal" value={formatMoney(summary.personal, currency)} />
-        <Stat label="Shared items" value={String(summary.sharedCount)} />
+      <div className="flex flex-wrap gap-2">
+        <FilterChip selected={spendView === 'mine'} onClick={() => setSpendView('mine')}>
+          My spending
+        </FilterChip>
+        <FilterChip selected={spendView === 'everyone'} onClick={() => setSpendView('everyone')}>
+          Everyone
+        </FilterChip>
       </div>
 
-      <SettlementPanel
-        transfers={transfers}
-        userSettlement={userSettlement}
-        members={members}
-        currentUserId={currentUserId}
-        currency={currency}
-      />
+      <div className={`grid grid-cols-2 gap-3 ${shared ? 'lg:grid-cols-3' : ''}`}>
+        <Stat label="Your paid" value={formatMoney(mySpending.total, currency)} />
+        {shared ? <Stat label="Your share" value={formatMoney(summary.yourShare, currency)} /> : null}
+        {shared ? <Stat label="Your outstanding" value={formatMoney(outstanding.youOweTotal, currency)} /> : null}
+      </div>
 
-      <Card className="p-5 sm:p-6">
-        <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">Balances</p>
-        <ul className="mt-4 divide-y divide-line">
-          {balancePeople.map((member) => {
-            const row = balances[member.userId]
-            const net = row?.net ?? 0
-            return (
-              <li key={member.userId} className="flex items-center justify-between py-3 first:pt-0 last:pb-0">
-                <div className="flex items-center gap-3">
-                  <Avatar initials={member.user.initials} size="sm" emphasis={member.role === 'owner'} />
-                  <div>
-                    <span className="text-sm text-ink">{displayName(member.user, currentUserId)}</span>
-                    {member.former ? (
-                      <span className="ml-2 text-[12px] text-ink-subtle">Left the trip</span>
-                    ) : null}
-                  </div>
+      {categories.length ? (
+        <div>
+          <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">
+            {spendView === 'mine' ? 'Your categories' : 'Category breakdown'}
+          </p>
+          <ul className="mt-4 space-y-4">
+            {categories.map((item) => (
+              <li key={item.category}>
+                <div className="mb-1.5 flex items-baseline justify-between gap-3">
+                  <span className="text-sm text-ink">{CATEGORY_LABEL[item.category]}</span>
+                  <span className="text-sm tabular-nums text-ink-muted">{formatMoney(item.amount, currency)}</span>
                 </div>
-                <span className={`text-sm tabular-nums ${net >= 0 ? 'text-ink' : 'text-accent'}`}>
-                  {netCopy(member.userId === currentUserId, net, currency)}
-                </span>
+                <ProgressBar value={(item.amount / maxCategory) * 100} />
               </li>
-            )
-          })}
-        </ul>
-      </Card>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {shared ? (
+        <SettlementLedger
+          trip={trip}
+          expenses={expenses}
+          repayments={tripRepayments}
+          members={members}
+          currentUserId={currentUserId}
+          currency={currency}
+          canPay={canAdd}
+          onPay={setPayDraft}
+          canDeleteRepayment={(item) => canDeleteRepayment(trip, currentUserId, item)}
+          onDeleteRepayment={(item) => {
+            const removed = deleteRepayment(item.id)
+            if (removed) {
+              showToast({
+                message: 'Repayment removed',
+                actionLabel: 'Undo',
+                onAction: () => restoreRepayment(removed),
+              })
+            }
+          }}
+        />
+      ) : null}
 
       <div>
         <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">Recent expenses</p>
@@ -109,6 +139,8 @@ export function ExpensePanel({
                   expense={expense}
                   members={members}
                   currentUserId={currentUserId}
+                  shared={shared}
+                  repayments={tripRepayments}
                   onClick={editable ? () => openEdit(expense.id) : undefined}
                 />
               </li>
@@ -116,14 +148,35 @@ export function ExpensePanel({
           })}
         </ul>
       </div>
+
+      {payDraft ? (
+        <PaySheet
+          trip={trip}
+          expenses={expenses}
+          repayments={tripRepayments}
+          members={members}
+          currentUserId={currentUserId}
+          draft={payDraft}
+          onClose={() => setPayDraft(null)}
+          onConfirm={addRepayment}
+        />
+      ) : null}
     </div>
   )
 }
 
-function netCopy(isYou, net, currency) {
-  const amount = formatMoney(Math.abs(net), currency)
-  if (net >= 0) return isYou ? `are owed ${amount}` : `is owed ${amount}`
-  return isYou ? `owe ${amount}` : `owes ${amount}`
+function FilterChip({ selected, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-md px-3 py-1.5 text-[13px] transition-colors ${
+        selected ? 'bg-accent-soft text-accent' : 'text-ink-muted hover:bg-canvas-muted'
+      }`}
+    >
+      {children}
+    </button>
+  )
 }
 
 function Stat({ label, value }) {

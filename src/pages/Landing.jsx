@@ -2,28 +2,19 @@ import { Link } from 'react-router-dom'
 
 const FEATURES = [
   {
-    title: 'Plan your itinerary',
-    body: 'Days, times, and the spaces between them — a quiet timeline instead of a crowded calendar.',
+    kicker: 'Plan',
+    title: 'The days, in one place.',
+    points: ['Build your itinerary', 'Organize places and bookings'],
   },
   {
-    title: 'Save places',
-    body: 'Hotels, cafés, and sights stay with the trip, ready for the map and the day they belong to.',
+    kicker: 'Spend',
+    title: 'What it actually cost.',
+    points: ['Track your own spending', "See the whole trip's spending", 'Split expenses fairly'],
   },
   {
-    title: 'Keep bookings together',
-    body: 'Flights, stays, and tickets sit beside the days they serve, with confirmations close at hand.',
-  },
-  {
-    title: 'Track spending',
-    body: 'See what has been spent, what remains, and where the money actually went.',
-  },
-  {
-    title: 'Split expenses with friends',
-    body: 'Unequal shares, more than one currency, and a settlement that stays honest.',
-  },
-  {
-    title: 'Organize every trip in one place',
-    body: 'Upcoming and remembered, personal or shared — without a second set of notes.',
+    kicker: 'Share',
+    title: 'Travel with other people.',
+    points: ['Invite travel companions', 'Shared planning', 'Track balances and repayments'],
   },
 ]
 
@@ -43,23 +34,23 @@ const ROLES = [
 
 export function LandingPage() {
   return (
-    <div>
-      <section className="mx-auto grid max-w-[1120px] items-end gap-12 px-5 pt-12 pb-20 sm:px-8 sm:pt-16 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:gap-16 lg:pt-20 lg:pb-28">
+    <div className="overflow-x-hidden">
+      <section className="mx-auto grid max-w-[1120px] items-center gap-12 px-5 pt-12 pb-20 sm:px-8 sm:pt-16 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:gap-16 lg:pt-20 lg:pb-28">
         <div>
           <p className="landing-rise text-[11px] tracking-[0.18em] text-ink-subtle uppercase">Travel OS</p>
-          <h1 className="landing-rise landing-delay-1 font-display mt-5 text-[48px] leading-[0.98] tracking-[-0.05em] text-ink sm:text-[68px] lg:text-[76px]">
+          <h1 className="landing-rise landing-delay-1 font-display mt-5 text-[48px] leading-[0.96] tracking-[-0.05em] text-ink sm:text-[68px] lg:text-[80px]">
             Plan less. Travel better.
           </h1>
-          <p className="landing-rise landing-delay-2 mt-6 max-w-[42ch] text-[17px] leading-relaxed text-ink-muted sm:text-[18px]">
-            Trips, itineraries, places, bookings, expenses, and the quieter work of planning — held
-            together in one editorial travel companion.
+          <p className="landing-rise landing-delay-2 mt-6 max-w-[38ch] text-[17px] leading-relaxed text-ink-muted sm:text-[19px]">
+            Travel OS brings trips, itineraries, places, bookings, expenses, and shared travel into
+            one place — for people who would rather be away than buried in tabs.
           </p>
-          <div className="landing-rise landing-delay-3 mt-9 flex flex-wrap items-center gap-x-6 gap-y-3">
+          <div className="landing-rise landing-delay-3 mt-10 flex flex-wrap items-center gap-x-6 gap-y-3">
             <Link
               to="/signup"
               className="inline-flex min-h-11 items-center rounded-md bg-accent px-5 text-sm font-medium text-white hover:bg-accent-hover"
             >
-              Start planning
+              Get started
             </Link>
             <Link to="/signin" className="inline-flex min-h-11 items-center text-sm text-ink-subtle hover:text-ink">
               Sign in
@@ -70,47 +61,54 @@ export function LandingPage() {
       </section>
 
       <section id="features" className="border-t border-line">
-        <div className="mx-auto max-w-[1120px] px-5 py-16 sm:px-8 sm:py-20">
+        <div className="mx-auto max-w-[1120px] px-5 py-16 sm:px-8 sm:py-24">
           <p className="text-[11px] tracking-[0.18em] text-ink-subtle uppercase">Features</p>
-          <h2 className="font-display mt-3 max-w-[16ch] text-[32px] leading-[1.08] tracking-[-0.04em] text-ink sm:text-[40px]">
-            Everything a trip needs, without the noise.
+          <h2 className="font-display mt-3 max-w-[14ch] text-[32px] leading-[1.06] tracking-[-0.04em] text-ink sm:text-[42px]">
+            Built around the trip, not the software.
           </h2>
-          <div className="mt-12 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-14 grid gap-12 sm:grid-cols-3 sm:gap-10">
             {FEATURES.map((feature) => (
-              <article key={feature.title}>
-                <h3 className="font-display text-[22px] leading-snug tracking-[-0.03em] text-ink">
+              <article key={feature.kicker}>
+                <p className="text-[11px] tracking-[0.16em] text-accent uppercase">{feature.kicker}</p>
+                <h3 className="font-display mt-3 text-[24px] leading-snug tracking-[-0.03em] text-ink">
                   {feature.title}
                 </h3>
-                <p className="mt-2 text-[14px] leading-relaxed text-ink-muted">{feature.body}</p>
+                <ul className="mt-5 space-y-2">
+                  {feature.points.map((point) => (
+                    <li key={point} className="text-[15px] leading-relaxed text-ink-muted">
+                      {point}
+                    </li>
+                  ))}
+                </ul>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="border-t border-line bg-canvas-muted">
-        <div className="mx-auto max-w-[1120px] px-5 py-16 sm:px-8 sm:py-20">
+      <section className="border-t border-line">
+        <div className="mx-auto max-w-[1120px] px-5 py-16 sm:px-8 sm:py-24">
           <p className="text-[11px] tracking-[0.18em] text-ink-subtle uppercase">A trip, gathered</p>
-          <h2 className="font-display mt-3 text-[32px] leading-[1.08] tracking-[-0.04em] text-ink sm:text-[40px]">
+          <h2 className="font-display mt-3 text-[32px] leading-[1.06] tracking-[-0.04em] text-ink sm:text-[42px]">
             Vienna, as it comes together.
           </h2>
-          <p className="mt-4 max-w-[46ch] text-[15px] leading-relaxed text-ink-muted">
-            Destination, dates, the days themselves, the places you mean to keep, and what it costs —
-            one view, not five apps.
+          <p className="mt-4 max-w-[44ch] text-[15px] leading-relaxed text-ink-muted">
+            Destination, dates, the itinerary, saved places, a booking, and what it costs — held as
+            one trip.
           </p>
           <TripPreview />
         </div>
       </section>
 
       <section className="border-t border-line">
-        <div className="mx-auto max-w-[1120px] px-5 py-16 sm:px-8 sm:py-20">
+        <div className="mx-auto max-w-[1120px] px-5 py-16 sm:px-8 sm:py-24">
           <p className="text-[11px] tracking-[0.18em] text-ink-subtle uppercase">Shared travel</p>
-          <h2 className="font-display mt-3 max-w-[18ch] text-[32px] leading-[1.08] tracking-[-0.04em] text-ink sm:text-[40px]">
+          <h2 className="font-display mt-3 max-w-[16ch] text-[32px] leading-[1.06] tracking-[-0.04em] text-ink sm:text-[42px]">
             Invite people. Keep the plan honest.
           </h2>
           <p className="mt-4 max-w-[46ch] text-[15px] leading-relaxed text-ink-muted">
             A shared itinerary, roles that stay quiet, and expenses that can be split unequally —
-            because not everyone ordered the same dinner.
+            then settled when someone actually pays the other back.
           </p>
           <div className="mt-12 grid gap-10 sm:grid-cols-3">
             {ROLES.map((item) => (
@@ -120,20 +118,42 @@ export function LandingPage() {
               </article>
             ))}
           </div>
+          <p className="mt-14 max-w-[46ch] text-[15px] leading-relaxed text-ink-subtle">
+            Shared itinerary. Unequal splits. Settlement and repayments — without turning the trip
+            into a spreadsheet.
+          </p>
+        </div>
+      </section>
+
+      <section className="border-t border-line">
+        <div className="mx-auto max-w-[720px] px-5 py-20 sm:px-8 sm:py-28">
+          <p className="text-[11px] tracking-[0.18em] text-ink-subtle uppercase">The idea</p>
+          <h2 className="font-display mt-5 text-[34px] leading-[1.08] tracking-[-0.045em] text-ink sm:text-[48px]">
+            Everything for the trip. Nothing you don't need.
+          </h2>
+          <p className="mt-6 max-w-[42ch] text-[16px] leading-relaxed text-ink-muted">
+            Travel OS is a quiet companion for the plan: the days, the places, the tickets, and who
+            owes whom. Not another dashboard to manage.
+          </p>
         </div>
       </section>
 
       <section className="border-t border-line">
         <div className="mx-auto max-w-[1120px] px-5 py-20 text-center sm:px-8 sm:py-24">
-          <h2 className="font-display text-[40px] leading-[1.05] tracking-[-0.045em] text-ink sm:text-[52px]">
+          <h2 className="font-display text-[40px] leading-[1.05] tracking-[-0.045em] text-ink sm:text-[56px]">
             Your next trip starts here.
           </h2>
-          <Link
-            to="/signup"
-            className="mt-8 inline-flex min-h-11 items-center rounded-md bg-accent px-5 text-sm font-medium text-white hover:bg-accent-hover"
-          >
-            Get started
-          </Link>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+            <Link
+              to="/signup"
+              className="inline-flex min-h-11 items-center rounded-md bg-accent px-5 text-sm font-medium text-white hover:bg-accent-hover"
+            >
+              Get started
+            </Link>
+            <Link to="/signin" className="inline-flex min-h-11 items-center text-sm text-ink-subtle hover:text-ink">
+              Sign in
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -169,80 +189,96 @@ function HeroPreview() {
   const days = viennaDaysUntil()
 
   return (
-    <aside className="landing-rise landing-delay-2 rounded-lg border border-line bg-surface px-6 py-7 sm:px-8 sm:py-8">
-      <p className="text-[11px] tracking-[0.18em] text-ink-subtle uppercase">Upcoming · Shared</p>
-      <h2 className="font-display mt-4 text-[40px] leading-[1.02] tracking-[-0.045em] text-ink sm:text-[48px]">
-        Vienna
-      </h2>
-      <p className="mt-2 text-[14px] text-ink-muted">Austria</p>
-      <p className="mt-4 text-[15px] text-ink">12–19 December 2026</p>
-      <div className="mt-8 border-t border-line pt-6">
-        <p className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">Departs in</p>
-        <p className="font-display mt-2 text-[52px] leading-none tracking-[-0.05em] text-ink">
+    <aside className="landing-rise landing-delay-2 min-w-0 border border-line bg-surface px-5 py-6 sm:px-7 sm:py-8">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-[11px] tracking-[0.18em] text-ink-subtle uppercase">Upcoming · Shared</p>
+          <h2 className="font-display mt-3 text-[40px] leading-[1.02] tracking-[-0.045em] text-ink sm:text-[48px]">
+            Vienna
+          </h2>
+          <p className="mt-2 text-[14px] text-ink-muted">12–19 December 2026</p>
+        </div>
+        <p className="font-display text-[36px] leading-none tracking-[-0.05em] text-ink">
           {days}
-          <span className="ml-2 font-sans text-[13px] tracking-normal text-ink-muted">
+          <span className="ml-1.5 font-sans text-[12px] tracking-normal text-ink-muted">
             {days === 1 ? 'day' : 'days'}
           </span>
         </p>
       </div>
-      <ol className="mt-8 space-y-3">
-        <li className="flex justify-between gap-4 text-[14px]">
-          <span className="text-ink">Arrival</span>
-          <span className="text-ink-subtle">14:20</span>
-        </li>
-        <li className="flex justify-between gap-4 text-[14px]">
-          <span className="text-ink">Hotel Sacher</span>
-          <span className="text-ink-subtle">16:00</span>
-        </li>
-        <li className="flex justify-between gap-4 text-[14px]">
-          <span className="text-ink">Figlmüller</span>
-          <span className="text-ink-subtle">19:30</span>
-        </li>
-      </ol>
+      <div className="mt-8 border-t border-line pt-6">
+        <p className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">Day 1</p>
+        <ol className="mt-4 space-y-3">
+          <li className="flex justify-between gap-4 text-[14px]">
+            <span className="text-ink">KUL → VIE</span>
+            <span className="text-ink-subtle">14:20</span>
+          </li>
+          <li className="flex justify-between gap-4 text-[14px]">
+            <span className="text-ink">Hotel Sacher</span>
+            <span className="text-ink-subtle">Confirmed</span>
+          </li>
+          <li className="flex justify-between gap-4 text-[14px]">
+            <span className="text-ink">Figlmüller</span>
+            <span className="text-ink-subtle">19:30</span>
+          </li>
+        </ol>
+      </div>
     </aside>
   )
 }
 
 function TripPreview() {
   return (
-    <div className="mt-12 grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-      <article className="rounded-lg border border-line bg-surface px-6 py-7 sm:px-8">
-        <p className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">Itinerary</p>
-        <div className="mt-6 space-y-7">
-          {PREVIEW_DAYS.map((day) => (
-            <div key={day.day}>
-              <p className="text-[11px] tracking-[0.16em] text-accent uppercase">{day.day}</p>
-              <h3 className="font-display mt-1.5 text-[24px] tracking-[-0.03em] text-ink">{day.title}</h3>
-              <ul className="mt-3 space-y-1.5">
-                {day.items.map((item) => (
-                  <li key={item} className="text-[14px] text-ink-muted">
-                    {item}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+    <div className="mt-12 min-w-0 border border-line bg-surface">
+      <div className="flex flex-wrap items-end justify-between gap-4 border-b border-line px-5 py-6 sm:px-8">
+        <div>
+          <p className="font-display text-[32px] leading-none tracking-[-0.04em] text-ink sm:text-[36px]">Vienna</p>
+          <p className="mt-2 text-[14px] text-ink-muted">Austria · Shared</p>
         </div>
-      </article>
-      <div className="grid gap-6">
-        <article className="rounded-lg border border-line bg-surface px-6 py-7 sm:px-8">
-          <p className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">Places</p>
-          <ul className="mt-5 space-y-3">
-            {PREVIEW_PLACES.map((place) => (
-              <li key={place} className="font-display text-[22px] tracking-[-0.03em] text-ink">
-                {place}
-              </li>
+        <p className="text-[14px] text-ink">12–19 December 2026</p>
+      </div>
+      <div className="grid lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <div className="border-b border-line px-5 py-7 sm:px-8 lg:border-r lg:border-b-0">
+          <p className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">Itinerary</p>
+          <div className="mt-6 space-y-7">
+            {PREVIEW_DAYS.map((day) => (
+              <div key={day.day}>
+                <p className="text-[11px] tracking-[0.16em] text-accent uppercase">{day.day}</p>
+                <h3 className="font-display mt-1.5 text-[22px] tracking-[-0.03em] text-ink sm:text-[24px]">
+                  {day.title}
+                </h3>
+                <ul className="mt-3 space-y-1.5">
+                  {day.items.map((item) => (
+                    <li key={item} className="text-[14px] text-ink-muted">
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
-        </article>
-        <article className="rounded-lg border border-line bg-surface px-6 py-7 sm:px-8">
-          <p className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">Expenses</p>
-          <p className="font-display mt-4 text-[36px] leading-none tracking-[-0.04em] text-ink">RM 3,403</p>
-          <p className="mt-2 text-[14px] text-ink-muted">of RM 4,000</p>
-          <div className="mt-5 h-1 overflow-hidden rounded-full bg-canvas-muted">
-            <div className="h-full w-[85%] bg-accent" />
           </div>
-        </article>
+        </div>
+        <div className="flex min-w-0 flex-col">
+          <div className="border-b border-line px-5 py-7 sm:px-8">
+            <p className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">Places</p>
+            <ul className="mt-5 space-y-3">
+              {PREVIEW_PLACES.map((place) => (
+                <li key={place} className="font-display text-[20px] tracking-[-0.03em] text-ink sm:text-[22px]">
+                  {place}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="border-b border-line px-5 py-7 sm:px-8">
+            <p className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">Booking</p>
+            <p className="font-display mt-4 text-[22px] tracking-[-0.03em] text-ink">KUL → VIE</p>
+            <p className="mt-2 text-[14px] text-ink-muted">12 December · 14:20 · Confirmed</p>
+          </div>
+          <div className="px-5 py-7 sm:px-8">
+            <p className="text-[11px] tracking-[0.16em] text-ink-subtle uppercase">Spending</p>
+            <p className="font-display mt-4 text-[32px] leading-none tracking-[-0.04em] text-ink">RM 3,403</p>
+            <p className="mt-2 text-[14px] text-ink-muted">of RM 4,000</p>
+          </div>
+        </div>
       </div>
     </div>
   )

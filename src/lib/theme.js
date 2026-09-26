@@ -1,10 +1,16 @@
 export const THEME_STORAGE_KEY = 'travel-os-theme'
 
+export const THEME_PREFERENCES = Object.freeze(['light', 'dark', 'system'])
+
+export function isThemePreference(value) {
+  return THEME_PREFERENCES.includes(value)
+}
+
 export function readStoredTheme() {
   try {
     if (typeof localStorage === 'undefined') return null
     const stored = localStorage.getItem(THEME_STORAGE_KEY)
-    if (stored === 'light' || stored === 'dark') return stored
+    if (isThemePreference(stored)) return stored
     return null
   } catch {
     return null
@@ -14,7 +20,7 @@ export function readStoredTheme() {
 export function writeStoredTheme(theme) {
   try {
     if (typeof localStorage === 'undefined') return
-    if (theme === 'light' || theme === 'dark') {
+    if (isThemePreference(theme)) {
       localStorage.setItem(THEME_STORAGE_KEY, theme)
     }
   } catch {

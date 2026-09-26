@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Button } from '../components/ui/Button.jsx'
 import { Card } from '../components/ui/Card.jsx'
@@ -9,21 +9,46 @@ import { formatDateRange } from '../lib/dates.js'
 import { ROLE_LABEL } from '../lib/people.js'
 import { getSupabaseClient } from '../lib/supabase/client.js'
 import {
-  acceptCloudInvitation,
+  acceptSharedCloudInvite,
   accountPathForJoin,
-  getCloudTripIdentity,
+  cloudTripWorkspacePath,
+  getVisibleCloudTripByInviteCode,
+  looksLikeCloudInviteToken,
+  prefersCloudJoin,
 } from '../lib/trips/invitations.js'
 
 export function JoinTripPage() {
   const { inviteCode, inviteToken } = useParams()
+  const { configured, loading, session } = useAuth()
   const { allTrips, allInvitations, currentUser, joinByToken } = useAppData()
-  const found = findJoinTarget(allTrips, allInvitations, inviteCode, inviteToken)
+  const local = findJoinTarget(allTrips, allInvitations, inviteCode, inviteToken)
+  const cloudToken = looksLikeCloudInviteToken(inviteToken)
 
-  if (found.ok) {
+  if (loading) {
+    return <JoinFrame title="Checking this invite" body="One moment." />
+  }
+
+  if (configured && !session) {
+    return <CloudSignInCard />
+  }
+
+  if (prefersCloudJoin({ configured, session }) && (cloudToken || !local.ok)) {
+    return (
+      <CloudJoinCard
+        inviteCode={inviteCode}
+        inviteToken={inviteToken}
+        localFallback={local.ok && !cloudToken ? local : null}
+        currentUser={currentUser}
+        joinByToken={joinByToken}
+      />
+    )
+  }
+
+  if (local.ok) {
     return (
       <LocalJoinCard
-        trip={found.trip}
-        invitation={found.invitation}
+        trip={local.trip}
+        invitation={local.invitation}
         currentUser={currentUser}
         inviteCode={inviteCode}
         inviteToken={inviteToken}
@@ -32,7 +57,12 @@ export function JoinTripPage() {
     )
   }
 
-  return <CloudJoinCard />
+  return (
+    <JoinFrame
+      title="This link has expired"
+      body="Ask whoever is organising the trip to send a new one."
+    />
+  )
 }
 
 function LocalJoinCard({ trip, invitation, currentUser, inviteCode, inviteToken, joinByToken }) {
@@ -45,20 +75,10 @@ function LocalJoinCard({ trip, invitation, currentUser, inviteCode, inviteToken,
 
   if (!isOpenInvitation(invitation)) {
     return (
-      <div className="mx-auto max-w-[420px] py-10">
-        <Link to="/trips" className="text-[13px] text-ink-subtle hover:text-ink">
-          ← Trips
-        </Link>
-        <Card className="mt-6 p-6 sm:p-8">
-          <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">Invite</p>
-          <h1 className="font-display mt-3 text-[32px] leading-tight tracking-[-0.04em]">
-            This invite was already used
-          </h1>
-          <p className="mt-3 text-sm leading-relaxed text-ink-muted">
-            {trip.city} is already on someone’s list.
-          </p>
-        </Card>
-      </div>
+      <JoinFrame
+        title="This invite was already used"
+        body={`${trip.city} is already on someone’s list.`}
+      />
     )
   }
 
@@ -94,74 +114,88 @@ function LocalJoinCard({ trip, invitation, currentUser, inviteCode, inviteToken,
   )
 }
 
-function CloudJoinCard() {
-  const { inviteToken } = useParams()
+function CloudSignInCard() {
   const location = useLocation()
-  const { configured, loading, session } = useAuth()
-  const [status, setStatus] = useState('idle')
+  return (
+    <JoinFrame
+      kicker="Cloud invite"
+      title="Sign in to join"
+      body="This invitation is for a shared trip. Sign in with the invited email, then you’ll come back here to join."
+      action={
+        <Link
+          to={accountPathForJoin(location.pathname)}
+          className="mt-6 inline-flex h-10 w-full items-center justify-center rounded-md border border-transparent bg-accent text-sm font-medium text-white hover:bg-accent-hover"
+        >
+          Continue to account
+        </Link>
+      }
+    />
+  )
+}
+
+function CloudJoinCard({ inviteCode, inviteToken, localFallback, currentUser, joinByToken }) {
+  const navigate = useNavigate()
+  const { session } = useAuth()
+  const [status, setStatus] = useState('ready')
   const [message, setMessage] = useState('')
   const [trip, setTrip] = useState(null)
-  const attempted = useRef('')
+  const [useLocal, setUseLocal] = useState(false)
 
   useEffect(() => {
-    if (!configured || loading || !session || !inviteToken) return undefined
-    if (attempted.current === inviteToken) return undefined
-    attempted.current = inviteToken
+    if (!session || !inviteCode) return undefined
 
     let cancelled = false
-    setStatus('working')
-
     const client = getSupabaseClient()
-    acceptCloudInvitation({ client, session, rawToken: inviteToken }).then(async (result) => {
-      if (cancelled) return
-      if (result.error) {
-        setStatus('error')
-        setMessage(result.error)
-        return
-      }
-      const identity = await getCloudTripIdentity({ client, session, tripId: result.tripId })
-      if (cancelled) return
-      setTrip(identity.trip)
-      setStatus('joined')
+    getVisibleCloudTripByInviteCode({ client, session, inviteCode }).then((result) => {
+      if (cancelled || !result.trip) return
+      navigate(cloudTripWorkspacePath(result.trip.id), { replace: true })
     })
 
     return () => {
       cancelled = true
     }
-  }, [configured, inviteToken, loading, session])
+  }, [inviteCode, navigate, session])
 
-  if (!configured) {
+  if (useLocal && localFallback) {
     return (
-      <JoinFrame
-        title="This link has expired"
-        body="Ask whoever is organising the trip to send a new one."
+      <LocalJoinCard
+        trip={localFallback.trip}
+        invitation={localFallback.invitation}
+        currentUser={currentUser}
+        inviteCode={inviteCode}
+        inviteToken={inviteToken}
+        joinByToken={joinByToken}
       />
     )
   }
 
-  if (loading) {
-    return <JoinFrame title="Checking this invite" body="One moment." />
+  async function accept() {
+    setStatus('working')
+    setMessage('')
+    const result = await acceptSharedCloudInvite({
+      client: getSupabaseClient(),
+      session,
+      rawToken: inviteToken,
+      inviteCode,
+    })
+    if (result.diagnostic) {
+      console.info('[join accept]', result.diagnostic)
+    }
+    if (result.error) {
+      if (localFallback) {
+        setUseLocal(true)
+        return
+      }
+      setStatus('error')
+      setMessage(result.error)
+      return
+    }
+    setTrip(result.trip)
+    setStatus('joined')
+    navigate(result.path || '/trips', { replace: true })
   }
 
-  if (!session) {
-    return (
-      <JoinFrame
-        kicker="Cloud invite"
-        title="Sign in to join"
-        body="This invitation is for a cloud trip. Sign in with the invited email, then you’ll come back here to join."
-        action={
-          <Link
-            to={accountPathForJoin(location.pathname)}
-            className="mt-6 inline-flex h-10 w-full items-center justify-center rounded-md border border-transparent bg-accent text-sm font-medium text-white hover:bg-accent-hover"
-          >
-            Continue to account
-          </Link>
-        }
-      />
-    )
-  }
-
-  if (status === 'working' || status === 'idle') {
+  if (status === 'working') {
     return <JoinFrame title="Joining this trip" body="Accepting the invitation." />
   }
 
@@ -172,22 +206,29 @@ function CloudJoinCard() {
         title={trip?.city || "You're on this trip"}
         body={
           trip
-            ? `${trip.country} · ${formatDateRange(trip.startDate, trip.endDate)}. It’s a cloud trip, so it stays off this device’s local list.`
-            : 'This cloud trip is now on your account. Local trips on this device are unchanged.'
-        }
-        action={
-          <Link
-            to="/trips"
-            className="mt-6 inline-flex h-10 w-full items-center justify-center rounded-md border border-transparent bg-accent text-sm font-medium text-white hover:bg-accent-hover"
-          >
-            See trips
-          </Link>
+            ? `${trip.country} · ${formatDateRange(trip.startDate, trip.endDate)}. This shared trip stays on your account.`
+            : 'This shared trip is now on your account. Local trips on this device are unchanged.'
         }
       />
     )
   }
 
-  return <JoinFrame title="This invite could not be used" body={message} />
+  if (status === 'error') {
+    return <JoinFrame title="This invite could not be used" body={message} />
+  }
+
+  return (
+    <JoinFrame
+      kicker="Cloud invite"
+      title="You’re invited"
+      body="Accept to join this shared trip with the account you just signed in. It will appear in your Cloud trips — not as a copy of someone else’s local list."
+      action={
+        <Button className="mt-6 w-full" onClick={accept}>
+          Join the trip
+        </Button>
+      }
+    />
+  )
 }
 
 function JoinFrame({ kicker = 'Invite', title, body, action }) {

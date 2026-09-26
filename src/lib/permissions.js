@@ -98,6 +98,20 @@ export function canDeleteExpense(trip, userId, expense) {
   return canEditExpense(trip, userId, expense)
 }
 
+/**
+ * Owners may remove any repayment. Editors may remove only ones they recorded.
+ *
+ * @param {import('../types').Trip | null | undefined} trip
+ * @param {string} userId
+ * @param {import('../types').Repayment} repayment
+ */
+export function canDeleteRepayment(trip, userId, repayment) {
+  const role = getMemberRole(trip, userId)
+  if (role === 'owner') return true
+  if (role === 'editor') return getRecordOwnerId(repayment) === userId
+  return false
+}
+
 /** @param {{ createdBy?: string }} record */
 export function getRecordOwnerId(record) {
   return record?.createdBy ?? null
@@ -137,6 +151,37 @@ export function canDeletePlace(trip, userId, place) {
 export function canEditBooking(trip, userId, booking) {
   if (!canOnTrip(trip, userId, 'editBooking')) return false
   return Boolean(booking)
+}
+
+/**
+ * Packing follows the existing trip edit model: owners and editors may change
+ * it, viewers may only look.
+ *
+ * @param {import('../types').Trip | null | undefined} trip
+ * @param {string} userId
+ */
+export function canEditPacking(trip, userId) {
+  return canOnTrip(trip, userId, 'editItinerary')
+}
+
+/**
+ * Checklist follows the same trip edit model as packing.
+ *
+ * @param {import('../types').Trip | null | undefined} trip
+ * @param {string} userId
+ */
+export function canEditChecklist(trip, userId) {
+  return canOnTrip(trip, userId, 'editItinerary')
+}
+
+/**
+ * Notes follow the same trip edit model as packing and checklist.
+ *
+ * @param {import('../types').Trip | null | undefined} trip
+ * @param {string} userId
+ */
+export function canEditNotes(trip, userId) {
+  return canOnTrip(trip, userId, 'editItinerary')
 }
 
 /**
@@ -191,6 +236,9 @@ export function getTripPermissions(trip, userId) {
     canView: can(role, 'viewTrip'),
     canEditTrip: can(role, 'editTrip'),
     canEditItinerary: can(role, 'editItinerary'),
+    canEditPacking: can(role, 'editItinerary'),
+    canEditChecklist: can(role, 'editItinerary'),
+    canEditNotes: can(role, 'editItinerary'),
     canAddExpense: can(role, 'addExpense'),
     canAddPlace: can(role, 'addPlace'),
     canAddBooking: can(role, 'addBooking'),

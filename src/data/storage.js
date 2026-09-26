@@ -37,6 +37,7 @@ export function createEmptyAccountSnapshot() {
     users: clone(seed.users),
     trips: [],
     expenses: [],
+    repayments: [],
     itineraries: [],
     places: [],
     bookings: [],
@@ -74,6 +75,7 @@ const COLLECTIONS = [
   'users',
   'trips',
   'expenses',
+  'repayments',
   'itineraries',
   'places',
   'bookings',
@@ -150,6 +152,20 @@ function sanitizeExpenses(value) {
       typeof item.tripId === 'string' &&
       Array.isArray(item.shares) &&
       item.shares.every((share) => isRecord(share) && typeof share.userId === 'string'),
+  )
+}
+
+function sanitizeRepayments(value) {
+  if (!Array.isArray(value)) return []
+  return value.filter(
+    (item) =>
+      hasId(item) &&
+      typeof item.tripId === 'string' &&
+      typeof item.fromUserId === 'string' &&
+      typeof item.toUserId === 'string' &&
+      Number.isFinite(Number(item.amount)) &&
+      Number(item.amount) > 0 &&
+      typeof item.paymentMethod === 'string',
   )
 }
 
@@ -246,6 +262,7 @@ function emptyCollections() {
     users: [],
     trips: [],
     expenses: [],
+    repayments: [],
     itineraries: [],
     places: [],
     bookings: [],
@@ -282,6 +299,7 @@ function sanitizeSnapshot(data, seed) {
     users: sanitizeUsers(migrated.users, seed.users),
     trips: sanitizeTrips(migrated.trips),
     expenses: sanitizeExpenses(migrated.expenses),
+    repayments: sanitizeRepayments(migrated.repayments),
     itineraries: sanitizeItineraries(migrated.itineraries),
     places: sanitizeKeyed(migrated.places, (item) => typeof item.tripId === 'string'),
     bookings: sanitizeKeyed(migrated.bookings, (item) => typeof item.tripId === 'string'),
@@ -317,6 +335,7 @@ export function loadSnapshot(seed, key = STORAGE_KEY) {
     checklistItems: Array.isArray(seed.checklistItems) ? clone(seed.checklistItems) : [],
     notes: Array.isArray(seed.notes) ? clone(seed.notes) : [],
     memories: Array.isArray(seed.memories) ? clone(seed.memories) : [],
+    repayments: Array.isArray(seed.repayments) ? clone(seed.repayments) : [],
   }
 
   const raw = readRaw(key)

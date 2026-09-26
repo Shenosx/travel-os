@@ -3,7 +3,7 @@ import { useAppData } from '../../hooks/useAppData.jsx'
 import { formatLongDate } from '../../lib/dates.js'
 import { Button } from '../ui/Button.jsx'
 import { Field, fieldClass, textareaClass } from '../ui/Field.jsx'
-import { Sheet } from '../ui/Sheet.jsx'
+import { Sheet, SheetCancel } from '../ui/Sheet.jsx'
 
 export function ItineraryItemSheet({
   trip,
@@ -18,6 +18,7 @@ export function ItineraryItemSheet({
   const { addItineraryItem, updateItineraryItem } = useAppData()
   const editing = Boolean(item)
   const [error, setError] = useState('')
+  const [dirty, setDirty] = useState(false)
   const defaultDate = itemDate(item, days, date, trip)
 
   function handleSubmit(event) {
@@ -60,8 +61,8 @@ export function ItineraryItemSheet({
   }
 
   return (
-    <Sheet kicker="Itinerary" title={editing ? 'Edit stop' : 'Add a stop'} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <Sheet kicker="Itinerary" title={editing ? 'Edit stop' : 'Add a stop'} onClose={onClose} dirty={dirty}>
+      <form onSubmit={handleSubmit} onChange={() => setDirty(true)} className="space-y-4">
         <Field label="Day">
           <select
             className={fieldClass}
@@ -140,9 +141,7 @@ export function ItineraryItemSheet({
         {error ? <p className="text-sm text-accent">{error}</p> : null}
 
         <div className="flex items-center justify-between pt-2">
-          <button type="button" className="text-sm text-ink-muted" onClick={onClose}>
-            Cancel
-          </button>
+          <SheetCancel onClose={onClose} />
           <Button type="submit">{editing ? 'Save' : 'Add'}</Button>
         </div>
       </form>

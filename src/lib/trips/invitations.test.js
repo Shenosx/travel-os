@@ -6,16 +6,26 @@ import assert from 'node:assert/strict'
 import {
   CLOUD_INVITATION_COLUMNS,
   acceptCloudInvitation,
+  acceptSharedCloudInvite,
   accountPathForJoin,
   cloudInviteLink,
+  cloudTripWorkspacePath,
   copyText,
   createCloudInvitation,
   formatCloudInvitationError,
   getCloudTripInvitations,
+  invitationAcceptDiagnostic,
+  looksLikeCloudInviteToken,
   mapCloudInvitation,
+  normalizeInviteToken,
+  prefersCloudJoin,
+  readAcceptedTripId,
   revokeCloudInvitation,
   safeCloudJoinPath,
 } from './invitations.js'
+import { getCloudTrips } from './cloud.js'
+import { canOnTrip } from '../permissions.js'
+import { getUserStorageKey, STORAGE_KEY } from '../../data/storage.js'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../../..')
 const session = { user: { id: '00000000-0000-0000-0000-000000000001' } }
@@ -50,12 +60,17 @@ function mockInviteClient({ data = [], error = null, rpc } = {}) {
             },
             eq(column, value) {
               calls.push(['eq', column, value])
+              const single = Array.isArray(data) ? data[0] ?? null : data
               return thenable(
                 { data, error },
                 {
                   order(orderColumn, options) {
                     calls.push(['order', orderColumn, options])
                     return Promise.resolve({ data, error })
+                  },
+                  maybeSingle() {
+                    calls.push(['maybeSingle'])
+                    return Promise.resolve({ data: single, error })
                   },
                 },
               )
@@ -240,6 +255,10 @@ test('invitation errors stay short and never echo secrets', () => {
   assert.equal(formatCloudInvitationError({ message: 'Invitation has expired' }).includes(rawToken), false)
   assert.match(formatCloudInvitationError({ message: 'This invitation belongs to someone else' }), /different account/)
   assert.equal(formatCloudInvitationError({ message: 'column token_hash does not exist' }).includes('token_hash'), false)
+  assert.equal(
+    formatCloudInvitationError({ message: 'permission denied for function accept_invitation' }, 'accept'),
+    'Sign in to continue.',
+  )
 })
 
 test('join return path keeps the token in the URL only', () => {
@@ -291,7 +310,11 @@ test('local invitation system remains on the local join path', () => {
   const joinPage = readFileSync(join(root, 'src/pages/JoinTrip.jsx'), 'utf8')
   assert.match(joinPage, /findJoinTarget/)
   assert.match(joinPage, /joinByToken/)
-  assert.match(joinPage, /acceptCloudInvitation/)
+  assert.match(joinPage, /acceptSharedCloudInvite/)
+  assert.match(joinPage, /prefersCloudJoin/)
+  assert.match(joinPage, /accountPathForJoin/)
+  assert.equal(joinPage.includes('CURRENT_USER_ID'), false)
+  assert.equal(joinPage.includes('user-jamie'), false)
 
   const people = readFileSync(join(root, 'src/components/trip/PeoplePanel.jsx'), 'utf8')
   assert.match(people, /inviteMember/)
@@ -299,4 +322,321 @@ test('local invitation system remains on the local join path', () => {
   assert.match(people, /setSessionUserId/)
   assert.equal(people.includes('createCloudInvitation'), false)
   assert.equal(people.includes('acceptCloudInvitation'), false)
+})
+
+const ownerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+const inviteeId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+const otherTripId = '33333333-3333-4333-8333-333333333333'
+const ownerSession = { user: { id: ownerId, email: 'owner@example.com' } }
+const inviteeSession = { user: { id: inviteeId, email: 'invitee@example.com' } }
+const tripRow = {
+  id: tripId,
+  city: 'Lisbon',
+  country: 'Portugal',
+  destination: 'Lisbon',
+  start_date: '2027-04-02',
+  end_date: '2027-04-09',
+  invite_code: 'lisbon-a1',
+  visibility: 'shared',
+}
+
+function mockJoinClient({ rpc, trip = tripRow } = {}) {
+  const calls = []
+  return {
+    calls,
+    from(table) {
+      calls.push(['from', table])
+      return {
+        select(columns) {
+          calls.push(['select', columns])
+          return {
+            eq(column, value) {
+              calls.push(['eq', column, value])
+              const match =
+                table === 'trips' &&
+                ((column === 'id' && value === trip.id) || (column === 'invite_code' && value === trip.invite_code))
+              const row = match ? trip : null
+              return {
+                order() {
+                  return Promise.resolve({ data: row ? [row] : [], error: null })
+                },
+                maybeSingle() {
+                  return Promise.resolve({ data: row, error: null })
+                },
+              }
+            },
+            order() {
+              return Promise.resolve({ data: [trip], error: null })
+            },
+          }
+        },
+        insert() {
+          throw new Error('client must not insert invitations')
+        },
+      }
+    },
+    rpc(name, params) {
+      calls.push(['rpc', name, params])
+      return Promise.resolve(rpc ?? { data: tripId, error: null })
+    },
+  }
+}
+
+test('owner creates a cloud invitation with the existing RPC', async () => {
+  const client = mockInviteClient({
+    rpc: { data: { id: inviteId, token: rawToken, expires_at: '2026-09-30T00:00:00Z' }, error: null },
+  })
+  const result = await createCloudInvitation({
+    client,
+    session: ownerSession,
+    tripId,
+    email: 'invitee@example.com',
+    role: 'viewer',
+    invitedName: 'Invitee',
+    inviteCode: 'lisbon-a1',
+  })
+  assert.equal(result.error, null)
+  assert.equal(result.invitation.role, 'viewer')
+  assert.equal(result.invitation.email, 'invitee@example.com')
+  assert.match(result.link, /\/join\/lisbon-a1\//)
+  assert.deepEqual(client.calls[0][0], 'rpc')
+  assert.equal(client.calls[0][1], 'create_invitation')
+})
+
+test('invitee accepts using their auth identity, not a local user id', async () => {
+  const { writes } = installStorage()
+  const client = mockJoinClient({ rpc: { data: tripId, error: null } })
+  const result = await acceptSharedCloudInvite({
+    client,
+    session: inviteeSession,
+    rawToken,
+    inviteCode: 'lisbon-a1',
+  })
+  assert.equal(result.error, null)
+  assert.equal(result.tripId, tripId)
+  assert.equal(result.alreadyMember, false)
+  assert.equal(result.path, cloudTripWorkspacePath(tripId))
+  assert.deepEqual(client.calls[0], ['rpc', 'accept_invitation', { p_raw_token: rawToken }])
+  assert.equal(
+    client.calls.some((call) => call[0] === 'rpc' && JSON.stringify(call).includes('user-jamie')),
+    false,
+  )
+  assert.equal(writes.length, 0)
+})
+
+test('accepted invite makes the shared trip visible only to the invitee session', async () => {
+  const inviteeClient = mockJoinClient()
+  const accepted = await acceptSharedCloudInvite({
+    client: inviteeClient,
+    session: inviteeSession,
+    rawToken,
+    inviteCode: 'lisbon-a1',
+  })
+  assert.equal(accepted.tripId, tripId)
+
+  const visible = await getCloudTrips({ client: inviteeClient, session: inviteeSession })
+  assert.equal(visible.error, null)
+  assert.ok(visible.trips.some((trip) => trip.id === tripId))
+  assert.equal(
+    visible.trips.some((trip) => trip.id === otherTripId),
+    false,
+  )
+
+  const stranger = await getCloudTrips({
+    client: {
+      from() {
+        return {
+          select() {
+            return {
+              order() {
+                return Promise.resolve({ data: [], error: null })
+              },
+            }
+          },
+        }
+      },
+    },
+    session: { user: { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' } },
+  })
+  assert.equal(stranger.trips.length, 0)
+})
+
+test('viewer and editor permissions stay on the existing role model', async () => {
+  const viewerTrip = {
+    members: [
+      { userId: inviteeId, role: 'viewer' },
+      { userId: ownerId, role: 'owner' },
+    ],
+  }
+  const editorTrip = {
+    members: [
+      { userId: inviteeId, role: 'editor' },
+      { userId: ownerId, role: 'owner' },
+    ],
+  }
+  assert.equal(canOnTrip(viewerTrip, inviteeId, 'viewTrip'), true)
+  assert.equal(canOnTrip(viewerTrip, inviteeId, 'editItinerary'), false)
+  assert.equal(canOnTrip(editorTrip, inviteeId, 'editItinerary'), true)
+  assert.equal(canOnTrip(editorTrip, inviteeId, 'inviteMembers'), false)
+})
+
+test('accepting a cloud invitation does not copy another user local snapshot', async () => {
+  const { writes } = installStorage()
+  const ownerKey = getUserStorageKey(ownerId)
+  const inviteeKey = getUserStorageKey(inviteeId)
+  globalThis.localStorage.setItem(
+    ownerKey,
+    JSON.stringify({ trips: [{ id: 'trip-vienna', city: 'Vienna' }], invitations: [{ email: 'hidden' }] }),
+  )
+
+  const client = mockJoinClient({ rpc: { data: tripId, error: null } })
+  await acceptSharedCloudInvite({
+    client,
+    session: inviteeSession,
+    rawToken,
+    inviteCode: 'lisbon-a1',
+  })
+
+  assert.equal(getUserStorageKey(ownerId), `travel-os:data:v1:user:${ownerId}`)
+  assert.equal(getUserStorageKey(inviteeId), `travel-os:data:v1:user:${inviteeId}`)
+  assert.notEqual(ownerKey, inviteeKey)
+  assert.equal(STORAGE_KEY, 'travel-os:data:v1')
+  assert.equal(globalThis.localStorage.getItem(inviteeKey), null)
+  assert.equal(JSON.parse(globalThis.localStorage.getItem(ownerKey)).trips[0].id, 'trip-vienna')
+  assert.equal(
+    writes.some(([key]) => key === inviteeKey || key === STORAGE_KEY),
+    false,
+  )
+})
+
+test('account next continuation still points at the join path', () => {
+  const path = `/join/lisbon-a1/${rawToken}`
+  assert.equal(accountPathForJoin(path), `/account?next=${encodeURIComponent(path)}`)
+  assert.equal(prefersCloudJoin({ configured: true, session: inviteeSession }), true)
+  assert.equal(prefersCloudJoin({ configured: true, session: null }), false)
+  assert.equal(looksLikeCloudInviteToken(rawToken), true)
+  assert.equal(looksLikeCloudInviteToken('m4y4-vienna-k7n2qp'), false)
+})
+
+test('already a member still opens the shared cloud trip', async () => {
+  const client = mockJoinClient({
+    rpc: { data: null, error: { message: 'Already a member of this trip' } },
+  })
+  const result = await acceptSharedCloudInvite({
+    client,
+    session: inviteeSession,
+    rawToken,
+    inviteCode: 'lisbon-a1',
+  })
+  assert.equal(result.error, null)
+  assert.equal(result.alreadyMember, true)
+  assert.equal(result.tripId, tripId)
+  assert.equal(result.path, cloudTripWorkspacePath(tripId))
+})
+
+test('accept hydrates the supabase session before the RPC', async () => {
+  const calls = []
+  let attached = null
+  const client = {
+    calls,
+    auth: {
+      async getSession() {
+        calls.push(['getSession'])
+        return { data: { session: attached } }
+      },
+      async setSession(next) {
+        calls.push(['setSession'])
+        attached = {
+          access_token: next.access_token,
+          refresh_token: next.refresh_token,
+          user: { id: inviteeId },
+        }
+        return { data: { session: attached } }
+      },
+    },
+    rpc(name, params) {
+      calls.push(['rpc', name, params])
+      return Promise.resolve({ data: tripId, error: null })
+    },
+    from() {
+      return {
+        select() {
+          return {
+            eq() {
+              return {
+                maybeSingle() {
+                  return Promise.resolve({ data: tripRow, error: null })
+                },
+              }
+            },
+          }
+        },
+      }
+    },
+  }
+
+  const result = await acceptSharedCloudInvite({
+    client,
+    session: { user: { id: inviteeId }, access_token: 'header.payload.sig', refresh_token: 'refresh' },
+    rawToken,
+    inviteCode: 'lisbon-a1',
+  })
+  assert.equal(result.error, null)
+  assert.equal(result.tripId, tripId)
+  assert.deepEqual(calls[0], ['getSession'])
+  assert.deepEqual(calls[1], ['setSession'])
+  assert.deepEqual(calls[2], ['rpc', 'accept_invitation', { p_raw_token: rawToken }])
+})
+
+test('accept reads a uuid from wrapped RPC data instead of failing closed', async () => {
+  const client = mockJoinClient({ rpc: { data: { accept_invitation: tripId }, error: null } })
+  const result = await acceptCloudInvitation({ client, session: inviteeSession, rawToken })
+  assert.equal(result.error, null)
+  assert.equal(result.tripId, tripId)
+})
+
+test('null RPC data without an error still fails closed and keeps a diagnostic', async () => {
+  const client = mockInviteClient({ rpc: { data: null, error: null } })
+  const result = await acceptCloudInvitation({ client, session: inviteeSession, rawToken })
+  assert.equal(result.tripId, null)
+  assert.equal(result.error, 'This invite could not be accepted.')
+  assert.equal(result.diagnostic.rpc, 'accept_invitation')
+  assert.equal(result.diagnostic.token.length, 64)
+  assert.equal(result.diagnostic.token.prefix, 'aaaa')
+  assert.equal(JSON.stringify(result.diagnostic).includes(rawToken), false)
+  assert.equal(result.diagnostic.args.p_raw_token, '[redacted]')
+})
+
+test('URI-encoded invite tokens are normalized before the RPC', async () => {
+  const encoded = encodeURIComponent(rawToken)
+  assert.equal(normalizeInviteToken(encoded), rawToken)
+  assert.equal(looksLikeCloudInviteToken(encoded), true)
+  const client = mockInviteClient({ rpc: { data: tripId, error: null } })
+  const result = await acceptCloudInvitation({ client, session: inviteeSession, rawToken: encoded })
+  assert.equal(result.error, null)
+  assert.deepEqual(client.calls[0], ['rpc', 'accept_invitation', { p_raw_token: rawToken }])
+})
+
+test('permission denied for the RPC is treated as a missing auth session', async () => {
+  const client = mockInviteClient({
+    rpc: { data: null, error: { message: 'permission denied for function accept_invitation', code: '42501' } },
+  })
+  const result = await acceptCloudInvitation({ client, session: inviteeSession, rawToken })
+  assert.equal(result.tripId, null)
+  assert.equal(result.error, 'Sign in to continue.')
+  assert.equal(result.diagnostic.error.message, 'permission denied for function accept_invitation')
+  assert.equal(result.diagnostic.error.code, '42501')
+})
+
+test('accept diagnostic never includes the raw token', () => {
+  const diagnostic = invitationAcceptDiagnostic({
+    userId: inviteeId,
+    rawToken,
+    data: tripId,
+    error: { message: `bad ${rawToken}`, code: 'P0001', details: rawToken, hint: rawToken },
+  })
+  const raw = JSON.stringify(diagnostic)
+  assert.equal(raw.includes(rawToken), false)
+  assert.equal(diagnostic.args.p_raw_token, '[redacted]')
+  assert.equal(readAcceptedTripId({ trip_id: tripId }), tripId)
 })

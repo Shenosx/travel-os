@@ -92,6 +92,12 @@ export function TripOverview({
   onOpenTab,
   onOpenPlace,
   onOpenBooking,
+  packing,
+  onOpenPacking,
+  checklist,
+  onOpenChecklist,
+  notesCount = 0,
+  onOpenNotes,
 }) {
   const stops = countStops(itinerary)
   const pending = openInvitationsForTrip(invitations, trip.id)
@@ -142,6 +148,29 @@ export function TripOverview({
             value={shared ? `${members.length} ${members.length === 1 ? 'person' : 'people'}` : 'Personal'}
             hint={shared ? 'Shared trip' : 'Just you'}
           />
+          <button type="button" className="text-left" onClick={() => onOpenPacking?.()}>
+            <SummaryStat
+              label="Packing"
+              value={packing?.total ? `${packing.percent}% packed` : 'No items yet'}
+              hint={packing?.total ? `${packing.packed} / ${packing.total}` : undefined}
+            />
+          </button>
+          <button type="button" className="text-left" onClick={() => onOpenChecklist?.()}>
+            <SummaryStat
+              label="Checklist"
+              value={
+                checklist?.total
+                  ? `${checklist.done} / ${checklist.total} completed`
+                  : 'No checklist items yet'
+              }
+            />
+          </button>
+          <button type="button" className="text-left" onClick={() => onOpenNotes?.()}>
+            <SummaryStat
+              label="Notes"
+              value={notesCount ? `${notesCount} ${notesCount === 1 ? 'note' : 'notes'}` : 'No notes yet'}
+            />
+          </button>
         </dl>
       </section>
 

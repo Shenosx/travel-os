@@ -5,7 +5,7 @@ export function PublicLayout() {
   return (
     <div className="min-h-svh bg-canvas text-ink">
       <header className="sticky top-0 z-20 border-b border-line bg-canvas/90 backdrop-blur-md">
-        <div className="mx-auto flex max-w-[1120px] flex-col gap-1 px-5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-8 sm:py-3.5">
+        <div className="mx-auto flex max-w-[1120px] min-w-0 flex-col gap-1 px-5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-8 sm:py-3.5">
           <div className="flex items-center justify-between gap-4">
             <Link to="/" className="font-display whitespace-nowrap text-[20px] tracking-[-0.03em] text-ink">
               Travel OS
