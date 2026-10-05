@@ -33,6 +33,7 @@ export function CloudExpenseView({
 }) {
   const [draft, setDraft] = useState(null)
   const [payDraft, setPayDraft] = useState(null)
+  const [payDebug, setPayDebug] = useState({ event: '', requestPay: false, draft: null })
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState(null)
   const [dirty, setDirty] = useState(false)
@@ -71,6 +72,7 @@ export function CloudExpenseView({
   }
 
   function openPayDraft(next) {
+    setPayDebug((current) => ({ ...current, draft: next ?? null }))
     if (!isPayDraft(next)) return
     setPayDraft(next)
   }
@@ -118,6 +120,16 @@ export function CloudExpenseView({
                 <Stat label="Shared items" value={String(summary.sharedCount)} />
               </div>
 
+              <div
+                data-pay-debug-panel=""
+                style={{ background: '#ffe14a', color: '#111', fontWeight: 700, fontSize: 13, padding: 12 }}
+              >
+                <p>PAY DEBUG</p>
+                <p>last event: {payDebug.event || 'none'}</p>
+                <p>requestPay called: {payDebug.requestPay ? 'YES' : 'NO'}</p>
+                <p>payDraft: {payDraft ? JSON.stringify(payDraft) : 'null'}</p>
+                <p>PaySheet mounted: {isPayDraft(payDraft) ? 'YES' : 'NO'}</p>
+              </div>
               <SettlementLedger
                 trip={trip}
                 expenses={expenses}
@@ -126,6 +138,8 @@ export function CloudExpenseView({
                 currentUserId={currentUserId}
                 currency={trip.currency}
                 canPay={canCreate}
+                debugPay
+                onPayDebug={(info) => setPayDebug((current) => ({ ...current, ...info }))}
                 onPay={openPayDraft}
                 canDeleteRepayment={(item) => item.createdBy === currentUserId || item.fromUserId === currentUserId}
                 onDeleteRepayment={(item) => {

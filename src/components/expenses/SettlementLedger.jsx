@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { displayName } from '../../data/mock.js'
 import { formatLongDate } from '../../lib/dates.js'
 import { formatMoney } from '../../lib/format.js'
@@ -21,6 +22,8 @@ export function SettlementLedger({
   currency,
   canPay = false,
   onPay,
+  debugPay = false,
+  onPayDebug,
   onDeleteRepayment,
   canDeleteRepayment = () => false,
 }) {
@@ -33,7 +36,9 @@ export function SettlementLedger({
 
   function requestPay(item) {
     const draft = payDraftFromDebt(item)
-    if (!draft || typeof onPay !== 'function') return
+    const called = Boolean(draft && typeof onPay === 'function')
+    onPayDebug?.({ requestPay: called, draft: draft ?? null })
+    if (!called) return
     onPay(draft)
   }
   const history = [...repayments].sort(
@@ -55,13 +60,11 @@ export function SettlementLedger({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">You owe</p>
             {canPay && onPay && view.youOwe[0]?.items[0] ? (
-              <button
-                type="button"
-                className="text-[13px] text-accent hover:text-accent-hover"
-                onClick={() => requestPay(view.youOwe[0].items[0])}
-              >
-                Record payment
-              </button>
+              <RecordPaymentControl
+                debug={debugPay}
+                onDebug={onPayDebug}
+                onPay={() => requestPay(view.youOwe[0].items[0])}
+              />
             ) : null}
           </div>
           {view.youOwe.length ? (
@@ -84,13 +87,11 @@ export function SettlementLedger({
                           </p>
                         </div>
                         {canPay && onPay ? (
-                          <button
-                            type="button"
-                            className="text-[13px] text-accent hover:text-accent-hover"
-                            onClick={() => requestPay(item)}
-                          >
-                            Record payment
-                          </button>
+                          <RecordPaymentControl
+                            debug={debugPay}
+                            onDebug={onPayDebug}
+                            onPay={() => requestPay(item)}
+                          />
                         ) : null}
                       </li>
                     ))}
@@ -179,5 +180,39 @@ export function SettlementLedger({
         </Card>
       ) : null}
     </div>
+  )
+}
+
+function RecordPaymentControl({ debug = false, onDebug, onPay }) {
+  const [eventLabel, setEventLabel] = useState('')
+
+  function mark(event, extra = {}) {
+    setEventLabel(event)
+    onDebug?.({ event, ...extra })
+  }
+
+  return (
+    <span className="inline-flex flex-col items-end gap-1">
+      {debug && eventLabel ? (
+        <span
+          data-pay-event=""
+          style={{ background: '#ffe14a', color: '#111', fontWeight: 800, fontSize: 12, padding: '2px 6px' }}
+        >
+          {eventLabel}
+        </span>
+      ) : null}
+      <button
+        type="button"
+        className="text-[13px] text-accent hover:text-accent-hover"
+        onPointerDown={() => mark('POINTER DOWN')}
+        onPointerUp={() => mark('POINTER UP')}
+        onClick={() => {
+          mark('CLICK FIRED')
+          onPay?.()
+        }}
+      >
+        Record payment
+      </button>
+    </span>
   )
 }
