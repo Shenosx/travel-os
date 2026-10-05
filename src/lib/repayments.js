@@ -40,6 +40,19 @@ export function isSharedTrip(trip) {
 }
 
 /**
+ * Settlement UI can use trip members or a separate people list (Cloud trips
+ * do not store members on the trip header object).
+ *
+ * @param {{ members?: { userId: string }[], visibility?: string, source?: string } | null | undefined} trip
+ * @param {{ userId?: string }[] | null | undefined} [people]
+ */
+export function settlementIsVisible(trip, people) {
+  if (isSharedTrip(trip)) return true
+  if ((people?.length ?? 0) > 1) return true
+  return trip?.visibility === 'shared'
+}
+
+/**
  * Home/trip-currency value of a repayment. Original amount is never rewritten.
  *
  * @param {import('../types').Repayment} repayment

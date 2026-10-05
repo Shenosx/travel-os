@@ -4,6 +4,7 @@ import { getSpendingSummary } from './expenses.js'
 import {
   getMySpending,
   getOutstandingDebts,
+  settlementIsVisible,
   getPairOutstanding,
   getUserOutstanding,
   isSharedTrip,
@@ -153,6 +154,17 @@ test('personal trip has no settlement', () => {
   assert.equal(isSharedTrip({ members: [{ userId: ME }, { userId: ALI }] }), true)
   assert.equal(isSharedTrip({ members: [] }), false)
   assert.equal(isSharedTrip(null), false)
+})
+
+test('settlement UI is visible for shared local trips and cloud people lists', () => {
+  assert.equal(settlementIsVisible({ members: [{ userId: ME }] }), false)
+  assert.equal(settlementIsVisible({ members: [{ userId: ME }, { userId: ALI }] }), true)
+  assert.equal(settlementIsVisible({ members: [], visibility: 'shared' }), true)
+  assert.equal(
+    settlementIsVisible({ source: 'cloud', visibility: 'private' }, [{ userId: ME }, { userId: ALI }]),
+    true,
+  )
+  assert.equal(settlementIsVisible({ source: 'cloud', visibility: 'private' }, [{ userId: ME }]), false)
 })
 
 test('cannot repay more than the outstanding amount', () => {

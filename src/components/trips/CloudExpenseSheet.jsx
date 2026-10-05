@@ -1,10 +1,12 @@
-import { useState } from 'react'
-import { getSpendingSummary, getUserSettlement } from '../../lib/expenses.js'
+import { useMemo, useState } from 'react'
+import { getSpendingSummary } from '../../lib/expenses.js'
 import { formatMoney } from '../../lib/format.js'
+import { useAppData } from '../../hooks/useAppData.jsx'
 import { useCloudTripBookings } from '../../hooks/useCloudTripBookings.js'
 import { useCloudTripExpenses } from '../../hooks/useCloudTripExpenses.js'
 import { ExpenseRow } from '../expenses/ExpenseRow.jsx'
-import { SettlementPanel } from '../expenses/SettlementPanel.jsx'
+import { PaySheet } from '../expenses/PaySheet.jsx'
+import { SettlementLedger } from '../expenses/SettlementLedger.jsx'
 import { Avatar } from '../ui/Avatar.jsx'
 import { Button } from '../ui/Button.jsx'
 import { Card } from '../ui/Card.jsx'
@@ -15,12 +17,19 @@ import { CloudExpenseForm } from './CloudExpenseForm.jsx'
 export function CloudExpenseSheet({ trip, currentUserId, onClose }) {
   const cloud = useCloudTripExpenses(trip)
   const cloudBookings = useCloudTripBookings(trip)
+  const { repayments, addRepayment, deleteRepayment } = useAppData()
   const [draft, setDraft] = useState(null)
+  const [payDraft, setPayDraft] = useState(null)
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState(null)
   const [dirty, setDirty] = useState(false)
   const summary = getSpendingSummary(cloud.expenses, currentUserId)
-  const userSettlement = getUserSettlement(cloud.settlement.transfers, currentUserId)
+  const tripRepayments = useMemo(
+    () => repayments.filter((item) => item.tripId === trip.id),
+    [repayments, trip.id],
+  )
+  const ledgerMembers = cloud.people
+  const actorIds = cloud.people.map((person) => person.userId)
 
   async function handleSubmit(input) {
     setBusy(true)
@@ -92,12 +101,19 @@ export function CloudExpenseSheet({ trip, currentUserId, onClose }) {
                 <Stat label="Shared items" value={String(summary.sharedCount)} />
               </div>
 
-              <SettlementPanel
-                transfers={cloud.settlement.transfers}
-                userSettlement={userSettlement}
-                members={cloud.people}
+              <SettlementLedger
+                trip={trip}
+                expenses={cloud.expenses}
+                repayments={tripRepayments}
+                members={ledgerMembers}
                 currentUserId={currentUserId}
                 currency={trip.currency}
+                canPay={cloud.canCreate}
+                onPay={setPayDraft}
+                canDeleteRepayment={(item) => item.createdBy === currentUserId || item.fromUserId === currentUserId}
+                onDeleteRepayment={(item) => {
+                  deleteRepayment(item.id)
+                }}
               />
 
               <Card className="p-5">
@@ -157,6 +173,25 @@ export function CloudExpenseSheet({ trip, currentUserId, onClose }) {
           ) : null}
         </div>
       </Sheet>
+
+      {payDraft ? (
+        <PaySheet
+          trip={trip}
+          expenses={cloud.expenses}
+          repayments={tripRepayments}
+          members={ledgerMembers}
+          currentUserId={currentUserId}
+          draft={payDraft}
+          onClose={() => setPayDraft(null)}
+          onConfirm={(input) =>
+            addRepayment(input, {
+              expenses: cloud.expenses,
+              memberIds: actorIds,
+              repayments: tripRepayments,
+            })
+          }
+        />
+      ) : null}
 
       {draft ? (
         <Sheet

@@ -383,12 +383,14 @@ export function AppDataProvider({ children }) {
         })
         return expense
       },
-      addRepayment: (input) => {
+      addRepayment: (input, context = {}) => {
         const trip = tripById(input.tripId)
-        if (!canOnTrip(trip, currentUser.id, 'addExpense')) return null
-        const memberIds = trip.members.map((member) => member.userId)
-        const tripExpenses = expenses.filter((item) => item.tripId === input.tripId)
-        const tripRepayments = repayments.filter((item) => item.tripId === input.tripId)
+        if (trip && !canOnTrip(trip, currentUser.id, 'addExpense')) return null
+        if (!trip && !isCloudTripId(input.tripId)) return null
+        const memberIds = context.memberIds ?? trip?.members.map((member) => member.userId) ?? []
+        const tripExpenses = context.expenses ?? expenses.filter((item) => item.tripId === input.tripId)
+        const tripRepayments =
+          context.repayments ?? repayments.filter((item) => item.tripId === input.tripId)
         const check = validateRepayment(input, tripExpenses, tripRepayments, memberIds)
         if (!check.ok) return null
         const stamp = nowIso()
@@ -419,7 +421,11 @@ export function AppDataProvider({ children }) {
         const current = repayments.find((item) => item.id === repaymentId)
         if (!current) return null
         const trip = tripById(current.tripId)
-        if (!canDeleteRepayment(trip, currentUser.id, current)) return null
+        if (trip) {
+          if (!canDeleteRepayment(trip, currentUser.id, current)) return null
+        } else if (!isCloudTripId(current.tripId)) {
+          return null
+        }
         setRepayments((list) => list.filter((item) => item.id !== repaymentId))
         recordActivity({
           tripId: current.tripId,

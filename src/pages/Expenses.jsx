@@ -17,7 +17,13 @@ import { formatMoney } from '../lib/format.js'
 import { HOME_CURRENCY } from '../lib/currency.js'
 import { peopleForTrip } from '../lib/people.js'
 import { canDeleteRepayment, canEditExpense, canOnTrip } from '../lib/permissions.js'
-import { getMySpending, getOutstandingDebts, getUserOutstanding, isSharedTrip } from '../lib/repayments.js'
+import {
+  getMySpending,
+  getOutstandingDebts,
+  getUserOutstanding,
+  isSharedTrip,
+  settlementIsVisible,
+} from '../lib/repayments.js'
 
 export function ExpensesPage() {
   const { expenses, repayments, trips, users, currentUser, addRepayment, deleteRepayment, restoreRepayment } =
@@ -46,13 +52,17 @@ export function ExpensesPage() {
     ? canOnTrip(selectedTrip, currentUser.id, 'addExpense')
     : trips.some((trip) => canOnTrip(trip, currentUser.id, 'addExpense'))
 
-  const tripPeople = selectedTrip ? peopleForTrip(selectedTrip, sorted, users) : []
-  const tripRepayments = selectedTrip
-    ? repayments.filter((item) => item.tripId === selectedTrip.id)
-    : []
   const outstanding = selectedTrip
-    ? getUserOutstanding(getOutstandingDebts(sorted, tripRepayments), currentUser.id)
+    ? getUserOutstanding(
+        getOutstandingDebts(sorted, repayments.filter((item) => item.tripId === selectedTrip.id)),
+        currentUser.id,
+      )
     : null
+  const settlementTrips = useMemo(() => {
+    const list = selectedTrip ? [selectedTrip] : trips
+    return list.filter((trip) => settlementIsVisible(trip))
+  }, [selectedTrip, trips])
+  const payTrip = trips.find((trip) => trip.id === payDraft?.tripId) ?? selectedTrip
 
   function membersForExpense(expense) {
     const trip = trips.find((item) => item.id === expense.tripId)
@@ -112,31 +122,39 @@ export function ExpensesPage() {
         />
       </div>
 
-      {sharedSelected ? (
-        <div className="mt-10">
-          <SettlementLedger
-            trip={selectedTrip}
-            expenses={sorted}
-            repayments={tripRepayments}
-            members={tripPeople}
-            currentUserId={currentUser.id}
-            currency={selectedTrip.currency}
-            canPay={canAdd}
-            onPay={setPayDraft}
-            canDeleteRepayment={(item) => canDeleteRepayment(selectedTrip, currentUser.id, item)}
-            onDeleteRepayment={(item) => {
-              const removed = deleteRepayment(item.id)
-              if (removed) {
-                showToast({
-                  message: 'Repayment removed',
-                  actionLabel: 'Undo',
-                  onAction: () => restoreRepayment(removed),
-                })
-              }
-            }}
-          />
-        </div>
-      ) : null}
+      {settlementTrips.map((trip) => {
+        const tripExpenses = getExpensesForTrip(expenses, trip.id)
+        const people = peopleForTrip(trip, tripExpenses, users)
+        const ledgerRepayments = repayments.filter((item) => item.tripId === trip.id)
+        return (
+          <div key={trip.id} className="mt-10">
+            {tripFilter === 'all' ? (
+              <p className="mb-3 text-[12px] tracking-[0.16em] text-ink-subtle uppercase">{trip.city}</p>
+            ) : null}
+            <SettlementLedger
+              trip={trip}
+              expenses={tripExpenses}
+              repayments={ledgerRepayments}
+              members={people}
+              currentUserId={currentUser.id}
+              currency={trip.currency}
+              canPay={canOnTrip(trip, currentUser.id, 'addExpense')}
+              onPay={(draft) => setPayDraft({ ...draft, tripId: trip.id })}
+              canDeleteRepayment={(item) => canDeleteRepayment(trip, currentUser.id, item)}
+              onDeleteRepayment={(item) => {
+                const removed = deleteRepayment(item.id)
+                if (removed) {
+                  showToast({
+                    message: 'Repayment removed',
+                    actionLabel: 'Undo',
+                    onAction: () => restoreRepayment(removed),
+                  })
+                }
+              }}
+            />
+          </div>
+        )
+      })}
 
       {categories.length ? (
         <section className="mt-12">
@@ -202,12 +220,12 @@ export function ExpensesPage() {
         )}
       </section>
 
-      {payDraft && selectedTrip ? (
+      {payDraft && payTrip ? (
         <PaySheet
-          trip={selectedTrip}
-          expenses={sorted}
-          repayments={tripRepayments}
-          members={tripPeople}
+          trip={payTrip}
+          expenses={getExpensesForTrip(expenses, payTrip.id)}
+          repayments={repayments.filter((item) => item.tripId === payTrip.id)}
+          members={peopleForTrip(payTrip, getExpensesForTrip(expenses, payTrip.id), users)}
           currentUserId={currentUser.id}
           draft={payDraft}
           onClose={() => setPayDraft(null)}

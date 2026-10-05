@@ -5,8 +5,8 @@ import { CATEGORY_LABEL } from '../../lib/expenses.js'
 import {
   getOutstandingDebts,
   getUserOutstanding,
-  isSharedTrip,
   paymentMethodLabel,
+  settlementIsVisible,
 } from '../../lib/repayments.js'
 import { Avatar } from '../ui/Avatar.jsx'
 import { Card } from '../ui/Card.jsx'
@@ -23,7 +23,7 @@ export function SettlementLedger({
   onDeleteRepayment,
   canDeleteRepayment = () => false,
 }) {
-  if (!isSharedTrip(trip)) return null
+  if (!settlementIsVisible(trip, members)) return null
 
   const debts = getOutstandingDebts(expenses, repayments)
   const view = getUserOutstanding(debts, currentUserId)
@@ -44,7 +44,26 @@ export function SettlementLedger({
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Card className="p-5 sm:p-6">
-          <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">You owe</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">You owe</p>
+            {canPay && onPay && view.youOwe[0]?.items[0] ? (
+              <button
+                type="button"
+                className="text-[13px] text-accent hover:text-accent-hover"
+                onClick={() => {
+                  const item = view.youOwe[0].items[0]
+                  onPay({
+                    toUserId: item.toId,
+                    expenseId: item.expenseId,
+                    amount: item.outstanding,
+                    label: item.description || CATEGORY_LABEL[item.category] || 'Expense',
+                  })
+                }}
+              >
+                Record payment
+              </button>
+            ) : null}
+          </div>
           {view.youOwe.length ? (
             <ul className="mt-5 space-y-6">
               {view.youOwe.map((group) => (
@@ -77,7 +96,7 @@ export function SettlementLedger({
                               })
                             }
                           >
-                            Pay {item.description || CATEGORY_LABEL[item.category] || 'this'}
+                            Record payment
                           </button>
                         ) : null}
                       </li>

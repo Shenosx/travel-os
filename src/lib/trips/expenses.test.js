@@ -406,8 +406,18 @@ test('cloud expense code stays off the local store and RPC-only for writes', () 
     assert.equal(src.includes('pendingOps'), false, file)
     assert.equal(src.includes('travel-os:data:v1'), false, file)
     assert.equal(src.includes('peopleForTrip('), false, file)
-    assert.equal(src.includes('useAppData'), false, file)
   }
+
+  const hook = readFileSync(join(root, 'src/hooks/useCloudTripExpenses.js'), 'utf8')
+  assert.equal(hook.includes('useAppData'), false)
+  const form = readFileSync(join(root, 'src/components/trips/CloudExpenseForm.jsx'), 'utf8')
+  assert.equal(form.includes('useAppData'), false)
+
+  const sheet = readFileSync(join(root, 'src/components/trips/CloudExpenseSheet.jsx'), 'utf8')
+  assert.match(sheet, /SettlementLedger/)
+  assert.match(sheet, /PaySheet/)
+  assert.match(sheet, /addRepayment/)
+  assert.equal(sheet.includes('SettlementPanel'), false)
 
   const layer = readFileSync(join(root, 'src/lib/trips/expenses.js'), 'utf8')
   assert.match(layer, /rpc\('save_expense'/)

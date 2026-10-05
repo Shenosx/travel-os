@@ -46,7 +46,7 @@ export function PaySheet({
       input,
       expenses,
       repayments,
-      trip.members.map((member) => member.userId),
+      (trip.members ?? members).map((member) => member.userId).filter(Boolean),
     )
     if (!check.ok) {
       setError(check.error)
