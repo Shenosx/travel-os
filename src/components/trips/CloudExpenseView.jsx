@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { getSpendingSummary } from '../../lib/expenses.js'
 import { isPayDraft, payDraftFromDebt } from '../../lib/repayments.js'
 import { formatMoney } from '../../lib/format.js'
@@ -33,23 +33,23 @@ export function CloudExpenseView({
 }) {
   const [draft, setDraft] = useState(null)
   const [payDraft, setPayDraft] = useState(null)
-  const [payDebug, setPayDebug] = useState({
-    event: '',
-    requestPay: false,
-    item: null,
-    fromDebt: null,
-    isPayDraft: false,
-    setPayDraftCalled: false,
-  })
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState(null)
   const [dirty, setDirty] = useState(false)
+  const paySheetOpen = isPayDraft(payDraft)
   const summary = getSpendingSummary(expenses, currentUserId)
   const tripRepayments = useMemo(
     () => repayments.filter((item) => item.tripId === trip.id),
     [repayments, trip.id],
   )
   const actorIds = people.map((person) => person.userId)
+
+  useEffect(() => {
+    if (!paySheetOpen) return
+    if (!document.getElementById('pay-sheet-form')) {
+      throw new Error('CloudExpenseView committed payDraft but PaySheet did not mount')
+    }
+  }, [paySheetOpen])
 
   async function handleSubmit(input) {
     setBusy(true)
@@ -79,16 +79,9 @@ export function CloudExpenseView({
   }
 
   function openPayDraft(next) {
-    const draft = payDraftFromDebt(next)
-    const accepted = isPayDraft(draft)
-    setPayDebug((current) => ({
-      ...current,
-      fromDebt: draft,
-      isPayDraft: accepted,
-      setPayDraftCalled: accepted,
-    }))
-    if (!accepted) return
-    setPayDraft(draft)
+    const nextDraft = payDraftFromDebt(next)
+    if (!isPayDraft(nextDraft)) return
+    setPayDraft(nextDraft)
   }
 
   return (
@@ -134,20 +127,6 @@ export function CloudExpenseView({
                 <Stat label="Shared items" value={String(summary.sharedCount)} />
               </div>
 
-              <div
-                data-pay-debug-panel=""
-                style={{ background: '#ffe14a', color: '#111', fontWeight: 700, fontSize: 13, padding: 12 }}
-              >
-                <p>PAY DEBUG</p>
-                <p>last event: {payDebug.event || 'none'}</p>
-                <p>requestPay called: {payDebug.requestPay ? 'YES' : 'NO'}</p>
-                <p>item: {payDebug.item ? JSON.stringify(payDebug.item) : 'null'}</p>
-                <p>payDraftFromDebt(item): {payDebug.fromDebt ? JSON.stringify(payDebug.fromDebt) : 'null'}</p>
-                <p>isPayDraft(payDraftFromDebt(item)): {String(Boolean(payDebug.isPayDraft))}</p>
-                <p>setPayDraft called: {payDebug.setPayDraftCalled ? 'YES' : 'NO'}</p>
-                <p>payDraft state: {payDraft ? JSON.stringify(payDraft) : 'null'}</p>
-                <p>PaySheet mounted: {isPayDraft(payDraft) ? 'YES' : 'NO'}</p>
-              </div>
               <SettlementLedger
                 trip={trip}
                 expenses={expenses}
@@ -156,8 +135,6 @@ export function CloudExpenseView({
                 currentUserId={currentUserId}
                 currency={trip.currency}
                 canPay={canCreate}
-                debugPay
-                onPayDebug={(info) => setPayDebug((current) => ({ ...current, ...info }))}
                 onPay={openPayDraft}
                 canDeleteRepayment={(item) => item.createdBy === currentUserId || item.fromUserId === currentUserId}
                 onDeleteRepayment={(item) => {
@@ -223,7 +200,7 @@ export function CloudExpenseView({
         </div>
       </Sheet>
 
-      {isPayDraft(payDraft) ? (
+      {paySheetOpen ? (
         <PaySheet
           trip={trip}
           expenses={expenses}

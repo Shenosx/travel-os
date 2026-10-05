@@ -63,6 +63,10 @@ function dialogTitles() {
   return [...document.querySelectorAll('[role="dialog"] h2')].map((node) => node.textContent.trim())
 }
 
+function paySheetMounted() {
+  return Boolean(document.getElementById('pay-sheet-form')) && dialogTitles().includes('Confirm payment')
+}
+
 function tap(node) {
   const EventCtor = window.PointerEvent ?? window.MouseEvent
   for (const type of ['pointerdown', 'pointerup', 'click']) {
@@ -85,7 +89,7 @@ test('cloud debt item from a mapped expense row becomes a pay draft', () => {
   assert.deepEqual(payDraftFromDebt(draft), draft)
 })
 
-test('clicking Record payment opens the payment sheet in Cloud Expenses', async () => {
+test('clicking Record payment mounts PaySheet after the committed Cloud Expenses render', async () => {
   const rootNode = document.getElementById('root')
   const root = createRoot(rootNode)
   let saved = null
@@ -110,8 +114,9 @@ test('clicking Record payment opens the payment sheet in Cloud Expenses', async 
   })
 
   assert.deepEqual(dialogTitles(), ['Expenses'])
-  assert.equal(document.body.textContent.includes('Confirm payment'), false)
-  assert.match(document.body.textContent, /payDraft state: null/)
+  assert.equal(paySheetMounted(), false)
+  assert.equal(document.body.textContent.includes('PAY DEBUG'), false)
+  assert.equal(document.querySelector('[data-pay-debug-panel]'), null)
 
   const buttons = recordPaymentButtons()
   assert.ok(buttons.length > 0, 'Cloud Expenses should render Record payment')
@@ -120,16 +125,12 @@ test('clicking Record payment opens the payment sheet in Cloud Expenses', async 
     tap(buttons[0])
   })
 
-  const panel = document.querySelector('[data-pay-debug-panel]')?.textContent ?? ''
-  assert.match(panel, /requestPay called: YES/)
-  assert.match(panel, /setPayDraft called: YES/)
-  assert.match(panel, /payDraft state: \{/)
-  assert.equal(panel.includes('payDraft state: null'), false)
-  assert.match(panel, /PaySheet mounted: YES/)
+  assert.equal(paySheetMounted(), true, 'committed render should contain PaySheet after Record payment')
+  assert.ok(document.body.textContent.includes('Confirm payment'))
   assert.ok(dialogTitles().includes('Expenses'), 'Cloud Expenses sheet should stay open')
-  assert.ok(dialogTitles().includes('Confirm payment'), 'PaySheet should mount after Record payment')
   assert.match(document.body.textContent, /Outstanding/)
   assert.match(document.body.textContent, /Ramen/)
+  assert.equal(document.body.textContent.includes('PAY DEBUG'), false)
 
   const amount = document.querySelector('input[type="number"]')
   const form = document.getElementById('pay-sheet-form')
@@ -145,18 +146,18 @@ test('clicking Record payment opens the payment sheet in Cloud Expenses', async 
   assert.equal(saved?.fromUserId, you)
   assert.equal(saved?.toUserId, alex)
   assert.equal(saved?.expenseId, expenses[0].id)
-  assert.equal(dialogTitles().includes('Confirm payment'), false)
+  assert.equal(paySheetMounted(), false)
 
   await act(async () => {
     recordPaymentButtons()[0].click()
   })
-  assert.ok(dialogTitles().includes('Confirm payment'))
+  assert.equal(paySheetMounted(), true)
 
   await act(async () => {
     const cancel = [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Cancel')
     cancel.click()
   })
-  assert.equal(dialogTitles().includes('Confirm payment'), false)
+  assert.equal(paySheetMounted(), false)
   assert.ok(dialogTitles().includes('Expenses'))
 
   await act(async () => {
