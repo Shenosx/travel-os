@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react'
 import { getSpendingSummary } from '../../lib/expenses.js'
-import { isPayDraft, payDraftFromDebt } from '../../lib/repayments.js'
 import { formatMoney } from '../../lib/format.js'
 import { ExpenseRow } from '../expenses/ExpenseRow.jsx'
 import { SettlementLedger } from '../expenses/SettlementLedger.jsx'
@@ -24,7 +23,7 @@ export function CloudExpenseView({
   canMutateExpense = () => false,
   repayments = [],
   bookings = [],
-  onPay,
+  onRecordPayment,
   onDeleteRepayment,
   onSaveExpense,
   onDeleteExpense,
@@ -65,18 +64,6 @@ export function CloudExpenseView({
     }
     setDraft(null)
     setDirty(false)
-  }
-
-  function openPayDraft(next) {
-    const nextDraft = payDraftFromDebt(next)
-    if (!isPayDraft(nextDraft) || typeof onPay !== 'function') return
-    onPay({
-      draft: nextDraft,
-      trip,
-      expenses,
-      people,
-      repayments: tripRepayments,
-    })
   }
 
   return (
@@ -130,7 +117,7 @@ export function CloudExpenseView({
                 currentUserId={currentUserId}
                 currency={trip.currency}
                 canPay={canCreate}
-                onPay={typeof onPay === 'function' ? openPayDraft : undefined}
+                onPay={typeof onRecordPayment === 'function' ? onRecordPayment : undefined}
                 canDeleteRepayment={(item) => item.createdBy === currentUserId || item.fromUserId === currentUserId}
                 onDeleteRepayment={(item) => {
                   onDeleteRepayment?.(item.id)

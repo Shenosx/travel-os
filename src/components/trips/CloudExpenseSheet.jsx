@@ -6,13 +6,16 @@ import { CloudExpenseView } from './CloudExpenseView.jsx'
 
 export { CloudExpenseView } from './CloudExpenseView.jsx'
 
-export function CloudExpenseSheet({ trip, currentUserId, onClose, onPay }) {
+export function CloudExpenseSheet({ trip, currentUserId, onClose, onRecordPayment, fixture = null }) {
   const cloud = useCloudTripExpenses(trip)
   const cloudBookings = useCloudTripBookings(trip)
   const { repayments, deleteRepayment } = useAppData()
+  const expenses = fixture?.expenses ?? cloud.expenses
+  const people = fixture?.people ?? cloud.people
+  const settlement = fixture?.settlement ?? cloud.settlement
   const tripRepayments = useMemo(
-    () => repayments.filter((item) => item.tripId === trip.id),
-    [repayments, trip.id],
+    () => (fixture?.repayments ?? repayments).filter((item) => item.tripId === trip.id),
+    [fixture?.repayments, repayments, trip.id],
   )
 
   return (
@@ -20,17 +23,25 @@ export function CloudExpenseSheet({ trip, currentUserId, onClose, onPay }) {
       <CloudExpenseView
         trip={trip}
         currentUserId={currentUserId}
-        expenses={cloud.expenses}
-        people={cloud.people}
-        settlement={cloud.settlement}
-        loading={cloud.loading}
-        error={cloud.error}
-        liveError={cloud.liveError}
-        canCreate={cloud.canCreate}
-        canMutateExpense={cloud.canMutateExpense}
+        expenses={expenses}
+        people={people}
+        settlement={settlement}
+        loading={fixture ? false : cloud.loading}
+        error={fixture ? null : cloud.error}
+        liveError={fixture ? null : cloud.liveError}
+        canCreate={fixture?.canCreate ?? cloud.canCreate}
+        canMutateExpense={fixture?.canMutateExpense ?? cloud.canMutateExpense}
         repayments={tripRepayments}
-        bookings={cloudBookings.bookings}
-        onPay={onPay}
+        bookings={fixture?.bookings ?? cloudBookings.bookings}
+        onRecordPayment={(debt) =>
+          onRecordPayment?.({
+            ...debt,
+            trip,
+            expenses,
+            people,
+            repayments: tripRepayments,
+          })
+        }
         onDeleteRepayment={deleteRepayment}
         onSaveExpense={cloud.save}
         onDeleteExpense={cloud.remove}

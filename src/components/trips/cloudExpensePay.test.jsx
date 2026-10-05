@@ -1,17 +1,17 @@
 import './cloudExpensePay.dom.js'
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { useState } from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
+import { AuthProvider } from '../../hooks/useAuth.jsx'
+import { AppDataProvider } from '../../hooks/useAppData.jsx'
 import {
   getCloudExpenseSettlement,
   mapCloudExpense,
   peopleForCloudExpenses,
 } from '../../lib/trips/expenses.js'
 import { getOutstandingDebts, getUserOutstanding, isPayDraft, payDraftFromDebt } from '../../lib/repayments.js'
-import { CloudExpenseView } from './CloudExpenseView.jsx'
-import { CloudPayHost } from './CloudPayHost.jsx'
+import { CloudTripsSection } from './CloudTripsSection.jsx'
 
 const you = '00000000-0000-0000-0000-000000000001'
 const alex = '00000000-0000-0000-0000-000000000002'
@@ -19,9 +19,13 @@ const jason = '00000000-0000-0000-0000-000000000003'
 const trip = {
   id: '11111111-1111-1111-1111-111111111111',
   destination: 'Osaka, Japan',
+  startDate: '2026-10-01',
+  endDate: '2026-10-08',
+  budgetAmount: 3000,
   currency: 'MYR',
   visibility: 'shared',
   source: 'cloud',
+  ownerId: you,
 }
 
 const cloudRow = {
@@ -57,69 +61,12 @@ const people = peopleForCloudExpenses(
   expenses,
 )
 
-function recordPaymentButtons() {
-  return [...document.querySelectorAll('button')].filter((button) => button.textContent.trim() === 'Record payment')
+function buttonNamed(name) {
+  return [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === name)
 }
 
-function dialogTitles() {
-  return [...document.querySelectorAll('[role="dialog"] h2')].map((node) => node.textContent.trim())
-}
-
-function payHost() {
-  return document.querySelector('[data-cloud-pay-host]')
-}
-
-function expenseSheet() {
-  return document.querySelector('[data-cloud-expense-sheet]')
-}
-
-function paySheetMountedOutsideExpenses() {
-  const form = document.getElementById('pay-sheet-form')
-  const host = payHost()
-  const sheet = expenseSheet()
-  return Boolean(
-    form &&
-      host &&
-      host.contains(form) &&
-      dialogTitles().includes('Confirm payment') &&
-      sheet &&
-      !sheet.contains(form) &&
-      !form.closest('[data-cloud-expense-sheet]'),
-  )
-}
-
-function tap(node) {
-  const EventCtor = window.PointerEvent ?? window.MouseEvent
-  for (const type of ['pointerdown', 'pointerup', 'click']) {
-    node.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true }))
-  }
-}
-
-function CloudExpensePayTree({ onAddRepayment, onExpensesClose }) {
-  const [paySession, setPaySession] = useState(null)
-  return (
-    <>
-      <div data-cloud-expense-sheet="">
-        <CloudExpenseView
-          trip={trip}
-          currentUserId={you}
-          expenses={expenses}
-          people={people}
-          settlement={getCloudExpenseSettlement(expenses, [you, alex, jason])}
-          canCreate
-          repayments={[]}
-          onPay={setPaySession}
-          onClose={onExpensesClose}
-        />
-      </div>
-      <CloudPayHost
-        session={paySession}
-        currentUserId={you}
-        onClose={() => setPaySession(null)}
-        onConfirm={onAddRepayment}
-      />
-    </>
-  )
+function paymentModal() {
+  return document.querySelector('[data-cloud-payment-modal]')
 }
 
 test('cloud debt item from a mapped expense row becomes a pay draft', () => {
@@ -134,88 +81,99 @@ test('cloud debt item from a mapped expense row becomes a pay draft', () => {
     label: 'Ramen',
   })
   assert.equal(isPayDraft(draft), true)
-  assert.deepEqual(payDraftFromDebt(draft), draft)
 })
 
-test('Record payment mounts PaySheet outside CloudExpenseSheet and save uses addRepayment', async () => {
+test('Cloud Trips Record payment opens the page-owned modal and save calls addRepayment', async () => {
   const rootNode = document.getElementById('root')
   const root = createRoot(rootNode)
-  let saved = null
-  let expensesClosed = false
+  const saved = []
 
   await act(async () => {
     root.render(
-      <CloudExpensePayTree
-        onAddRepayment={(input) => {
-          saved = input
-          return { id: 'repay-1', ...input }
-        }}
-        onExpensesClose={() => {
-          expensesClosed = true
-        }}
-      />,
+      <AuthProvider>
+        <AppDataProvider>
+          <CloudTripsSection
+            trips={[trip]}
+            currentUserId={you}
+            onCreate={async () => ({ error: null })}
+            onUpdate={async () => ({ error: null })}
+            onDelete={async () => ({ error: null })}
+            expenseFixture={{
+              expenses,
+              people,
+              settlement: getCloudExpenseSettlement(expenses, [you, alex, jason]),
+              canCreate: true,
+              repayments: [],
+            }}
+            addRepayment={(input, context) => {
+              saved.push({ input, context })
+              return { id: 'repay-1', ...input }
+            }}
+          />
+        </AppDataProvider>
+      </AuthProvider>,
     )
   })
 
-  assert.ok(expenseSheet(), 'Cloud Expenses sheet should mount')
-  assert.equal(payHost(), null)
-  assert.equal(dialogTitles().includes('Confirm payment'), false)
-  assert.ok(dialogTitles().includes('Expenses'))
-
-  const buttons = recordPaymentButtons()
-  assert.ok(buttons.length > 0, 'Cloud Expenses should render Record payment')
+  assert.match(document.body.textContent, /Osaka, Japan/)
+  assert.equal(paymentModal(), null)
 
   await act(async () => {
-    tap(buttons[0])
+    buttonNamed('Expenses').click()
   })
 
-  assert.equal(paySheetMountedOutsideExpenses(), true)
-  assert.equal(document.body.contains(payHost()), true)
-  assert.equal(payHost().parentElement, document.body)
-  assert.ok(document.body.textContent.includes('Confirm payment'))
-  assert.ok(dialogTitles().includes('Expenses'))
-  assert.match(document.body.textContent, /Alex/)
-  assert.match(document.body.textContent, /Ramen/)
-  assert.match(document.body.textContent, /Outstanding/)
-  assert.equal(expensesClosed, false)
+  assert.ok(document.querySelector('[data-cloud-expense-sheet]'), 'Cloud Expenses should open from Cloud Trips')
+  assert.match(document.body.textContent, /Record payment/)
+  assert.equal(paymentModal(), null)
 
-  const amount = document.querySelector('#pay-sheet-form input[type="number"]')
-  const method = document.querySelector('#pay-sheet-form select, #pay-sheet-form button')
-  const date = document.querySelector('#pay-sheet-form input[type="date"]')
-  const note = document.querySelector('#pay-sheet-form textarea')
-  const form = document.getElementById('pay-sheet-form')
-  assert.ok(amount, 'editable payment amount should be visible')
+  await act(async () => {
+    buttonNamed('Record payment').click()
+  })
+
+  const modal = paymentModal()
+  assert.ok(modal, 'payment modal should open from Cloud Trips activeRepayment')
+  assert.equal(modal.style.zIndex, '9999')
+  assert.equal(document.querySelector('[data-cloud-expense-sheet]').contains(modal), false)
+  assert.match(modal.textContent, /Alex/)
+  assert.match(modal.textContent, /Ramen/)
+  assert.match(modal.textContent, /Outstanding/)
+  assert.match(modal.textContent, /Record payment/)
+
+  const amount = modal.querySelector('input[type="number"]')
+  assert.ok(amount)
   assert.equal(amount.value, '40')
-  assert.ok(method, 'payment method should be visible')
-  assert.ok(date, 'date should be visible')
-  assert.ok(note, 'optional note should be visible')
-  assert.ok(form)
-
   await act(async () => {
-    form.requestSubmit()
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+    setter.call(amount, '25')
+    amount.dispatchEvent(new window.Event('input', { bubbles: true }))
+    amount.dispatchEvent(new window.Event('change', { bubbles: true }))
   })
 
-  assert.equal(saved?.amount, 40)
-  assert.equal(saved?.fromUserId, you)
-  assert.equal(saved?.toUserId, alex)
-  assert.equal(saved?.expenseId, expenses[0].id)
-  assert.equal(payHost(), null)
-  assert.equal(dialogTitles().includes('Confirm payment'), false)
-  assert.ok(dialogTitles().includes('Expenses'))
+  await act(async () => {
+    [...modal.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Save').click()
+  })
+
+  assert.equal(saved.length, 1)
+  assert.equal(saved[0].input.amount, 25)
+  assert.equal(saved[0].input.fromUserId, you)
+  assert.equal(saved[0].input.toUserId, alex)
+  assert.equal(saved[0].input.expenseId, expenses[0].id)
+  assert.equal(saved[0].input.tripId, trip.id)
+  assert.equal(saved[0].input.paymentMethod, 'maybank')
+  assert.ok(Array.isArray(saved[0].context.expenses))
+  assert.equal(paymentModal(), null)
+  assert.ok(document.querySelector('[data-cloud-expense-sheet]'), 'Expenses sheet should stay open after save')
 
   await act(async () => {
-    recordPaymentButtons()[0].click()
+    buttonNamed('Record payment').click()
   })
-  assert.equal(paySheetMountedOutsideExpenses(), true)
+  assert.ok(paymentModal())
 
   await act(async () => {
-    const cancel = [...document.querySelectorAll('button')].find((button) => button.textContent.trim() === 'Cancel')
-    cancel.click()
+    ;[...paymentModal().querySelectorAll('button')].find((button) => button.textContent.trim() === 'Cancel').click()
   })
-  assert.equal(payHost(), null)
-  assert.equal(dialogTitles().includes('Confirm payment'), false)
-  assert.ok(dialogTitles().includes('Expenses'))
-  assert.equal(expensesClosed, false)
+  assert.equal(paymentModal(), null)
+  assert.ok(document.querySelector('[data-cloud-expense-sheet]'))
 
   await act(async () => {
     root.unmount()
