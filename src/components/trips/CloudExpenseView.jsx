@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { getSpendingSummary } from '../../lib/expenses.js'
-import { isPayDraft } from '../../lib/repayments.js'
+import { isPayDraft, payDraftFromDebt } from '../../lib/repayments.js'
 import { formatMoney } from '../../lib/format.js'
 import { ExpenseRow } from '../expenses/ExpenseRow.jsx'
 import { PaySheet } from '../expenses/PaySheet.jsx'
@@ -33,7 +33,14 @@ export function CloudExpenseView({
 }) {
   const [draft, setDraft] = useState(null)
   const [payDraft, setPayDraft] = useState(null)
-  const [payDebug, setPayDebug] = useState({ event: '', requestPay: false, draft: null })
+  const [payDebug, setPayDebug] = useState({
+    event: '',
+    requestPay: false,
+    item: null,
+    fromDebt: null,
+    isPayDraft: false,
+    setPayDraftCalled: false,
+  })
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState(null)
   const [dirty, setDirty] = useState(false)
@@ -72,9 +79,16 @@ export function CloudExpenseView({
   }
 
   function openPayDraft(next) {
-    setPayDebug((current) => ({ ...current, draft: next ?? null }))
-    if (!isPayDraft(next)) return
-    setPayDraft(next)
+    const draft = payDraftFromDebt(next)
+    const accepted = isPayDraft(draft)
+    setPayDebug((current) => ({
+      ...current,
+      fromDebt: draft,
+      isPayDraft: accepted,
+      setPayDraftCalled: accepted,
+    }))
+    if (!accepted) return
+    setPayDraft(draft)
   }
 
   return (
@@ -127,7 +141,11 @@ export function CloudExpenseView({
                 <p>PAY DEBUG</p>
                 <p>last event: {payDebug.event || 'none'}</p>
                 <p>requestPay called: {payDebug.requestPay ? 'YES' : 'NO'}</p>
-                <p>payDraft: {payDraft ? JSON.stringify(payDraft) : 'null'}</p>
+                <p>item: {payDebug.item ? JSON.stringify(payDebug.item) : 'null'}</p>
+                <p>payDraftFromDebt(item): {payDebug.fromDebt ? JSON.stringify(payDebug.fromDebt) : 'null'}</p>
+                <p>isPayDraft(payDraftFromDebt(item)): {String(Boolean(payDebug.isPayDraft))}</p>
+                <p>setPayDraft called: {payDebug.setPayDraftCalled ? 'YES' : 'NO'}</p>
+                <p>payDraft state: {payDraft ? JSON.stringify(payDraft) : 'null'}</p>
                 <p>PaySheet mounted: {isPayDraft(payDraft) ? 'YES' : 'NO'}</p>
               </div>
               <SettlementLedger

@@ -60,17 +60,23 @@ export function settlementIsVisible(trip, people) {
 }
 
 export function payDraftFromDebt(item) {
-  if (!item || item.toId == null || item.outstanding == null) return null
+  if (!item || typeof item !== 'object') return null
+  const toUserId = item.toUserId || item.toId
+  const amount = item.outstanding ?? item.amount
+  if (toUserId == null || toUserId === '' || amount == null) return null
   return {
-    toUserId: item.toId,
+    toUserId,
     expenseId: item.expenseId ?? null,
-    amount: item.outstanding,
-    label: item.description || CATEGORY_LABEL[item.category] || 'Expense',
+    amount,
+    label: item.label || item.description || CATEGORY_LABEL[item.category] || 'Expense',
   }
 }
 
 export function isPayDraft(value) {
-  return Boolean(value && typeof value === 'object' && value.toUserId && value.amount != null)
+  if (!value || typeof value !== 'object') return false
+  const toUserId = value.toUserId || value.toId
+  const amount = value.amount ?? value.outstanding
+  return Boolean(toUserId && amount != null)
 }
 
 /** Open after the current click so a parent sheet overlay cannot dismiss the new sheet. */

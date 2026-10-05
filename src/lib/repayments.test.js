@@ -176,6 +176,8 @@ test('record payment draft opens the pay sheet with debt details', async () => {
   })
   assert.equal(isPayDraft(draft), true)
   assert.equal(isPayDraft(null), false)
+  assert.deepEqual(payDraftFromDebt(draft), draft)
+  assert.equal(isPayDraft({ toId: ALI, outstanding: 100 }), true)
 
   const scheduled = schedulePayDraft((next) => opened.push(next), draft)
   assert.equal(scheduled, true)

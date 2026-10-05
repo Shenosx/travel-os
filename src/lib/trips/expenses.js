@@ -99,8 +99,10 @@ export function formatCloudExpenseError(error, action = 'load') {
 
 export function mapCloudExpenseShare(row) {
   if (!row) return null
+  const userId = row.user_id ?? row.userId
+  if (!userId) return null
   return {
-    userId: row.user_id,
+    userId,
     amount: Number(row.amount ?? 0),
   }
 }
@@ -110,15 +112,15 @@ export function mapCloudExpense(row) {
   const shares = Array.isArray(row.expense_shares) ? row.expense_shares : Array.isArray(row.shares) ? row.shares : []
   return {
     id: row.id,
-    tripId: row.trip_id,
+    tripId: row.trip_id ?? row.tripId,
     amount: Number(row.amount ?? 0),
     currency: row.currency,
-    convertedAmount: Number(row.converted_amount ?? 0),
-    convertedCurrency: row.converted_currency,
+    convertedAmount: Number(row.converted_amount ?? row.convertedAmount ?? 0),
+    convertedCurrency: row.converted_currency ?? row.convertedCurrency,
     category: row.category,
     date: row.date,
     description: row.description ?? '',
-    payerId: row.paid_by,
+    payerId: row.paid_by ?? row.payerId,
     bookingId: row.booking_id ?? null,
     placeId: row.place_id ?? null,
     createdBy: row.created_by,

@@ -425,7 +425,7 @@ test('cloud expense code stays off the local store and RPC-only for writes', () 
   assert.equal(view.includes('SettlementPanel'), false)
 
   const ledger = readFileSync(join(root, 'src/components/expenses/SettlementLedger.jsx'), 'utf8')
-  assert.match(ledger, /onPay\(draft\)/)
+  assert.match(ledger, /onPay\(fromDebt\)/)
   assert.match(ledger, /payDraftFromDebt/)
   const paySheet = readFileSync(join(root, 'src/components/expenses/PaySheet.jsx'), 'utf8')
   assert.match(paySheet, /zIndex=\{60\}/)

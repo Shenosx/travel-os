@@ -35,11 +35,17 @@ export function SettlementLedger({
   const memberMap = Object.fromEntries(people.map((member) => [member.userId, member.user]))
 
   function requestPay(item) {
-    const draft = payDraftFromDebt(item)
-    const called = Boolean(draft && typeof onPay === 'function')
-    onPayDebug?.({ requestPay: called, draft: draft ?? null })
-    if (!called) return
-    onPay(draft)
+    const fromDebt = payDraftFromDebt(item)
+    const accepted = Boolean(fromDebt && typeof onPay === 'function')
+    onPayDebug?.({
+      requestPay: true,
+      item: item ?? null,
+      fromDebt,
+      isPayDraft: Boolean(fromDebt),
+      setPayDraftCalled: accepted,
+    })
+    if (!accepted) return
+    onPay(fromDebt)
   }
   const history = [...repayments].sort(
     (a, b) => String(b.paidAt ?? '').localeCompare(String(a.paidAt ?? '')) || String(b.id).localeCompare(String(a.id)),
