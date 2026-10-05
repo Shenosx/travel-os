@@ -101,10 +101,10 @@ export function Sheet({
         className={`fixed inset-0 ${zClass} flex items-end justify-center sm:items-center`}
         style={zIndex == null ? undefined : { zIndex }}
       >
-        <button
-          type="button"
+        <div
+          data-sheet-dismiss=""
           className="absolute inset-0 bg-ink/25 dark:bg-black/50"
-          aria-label="Dismiss overlay"
+          aria-hidden="true"
           onClick={requestClose}
         />
         <div
@@ -115,6 +115,8 @@ export function Sheet({
           className={`relative z-10 flex max-h-[92svh] w-full flex-col rounded-t-xl border border-line bg-surface sm:rounded-xl ${
             wide ? 'max-w-[480px]' : 'max-w-[420px]'
           }`}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
         >
           <div className="flex shrink-0 items-start justify-between gap-4 px-5 pt-5 sm:px-6 sm:pt-6">
             <div>

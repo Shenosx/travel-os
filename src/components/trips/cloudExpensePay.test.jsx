@@ -52,6 +52,13 @@ function dialogTitles() {
   return [...document.querySelectorAll('[role="dialog"] h2')].map((node) => node.textContent.trim())
 }
 
+function tap(node) {
+  const EventCtor = window.PointerEvent ?? window.MouseEvent
+  for (const type of ['pointerdown', 'pointerup', 'click']) {
+    node.dispatchEvent(new EventCtor(type, { bubbles: true, cancelable: true }))
+  }
+}
+
 test('clicking Record payment opens the payment sheet in Cloud Expenses', async () => {
   const rootNode = document.getElementById('root')
   const root = createRoot(rootNode)
@@ -79,11 +86,18 @@ test('clicking Record payment opens the payment sheet in Cloud Expenses', async 
   assert.deepEqual(dialogTitles(), ['Expenses'])
   assert.equal(document.body.textContent.includes('Confirm payment'), false)
 
+  const overlay = document.querySelector('[data-sheet-dismiss]')
+  assert.ok(overlay, 'Cloud Expenses sheet should render a dismiss backdrop')
+  assert.notEqual(overlay.tagName, 'BUTTON', 'dismiss backdrop must not be a button under Record payment')
+  assert.equal(document.querySelector('button[aria-label="Dismiss overlay"]'), null)
+
   const buttons = recordPaymentButtons()
   assert.ok(buttons.length > 0, 'Cloud Expenses should render Record payment')
+  assert.equal(buttons[0].disabled, false)
+  assert.equal(buttons[0].closest('form'), null)
 
   await act(async () => {
-    buttons[0].click()
+    tap(buttons[0])
   })
 
   assert.ok(dialogTitles().includes('Expenses'), 'Cloud Expenses sheet should stay open')
