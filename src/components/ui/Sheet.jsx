@@ -24,7 +24,17 @@ function focusableIn(root) {
   )
 }
 
-export function Sheet({ title, kicker, children, onClose, footer, wide = false, dirty = false, zClass = 'z-50' }) {
+export function Sheet({
+  title,
+  kicker,
+  children,
+  onClose,
+  footer,
+  wide = false,
+  dirty = false,
+  zClass = 'z-50',
+  zIndex,
+}) {
   const [askDiscard, setAskDiscard] = useState(false)
   const titleId = useId()
   const panelRef = useRef(null)
@@ -87,22 +97,22 @@ export function Sheet({ title, kicker, children, onClose, footer, wide = false, 
 
   return (
     <SheetCloseContext.Provider value={requestClose}>
-      <div className={`fixed inset-0 ${zClass} flex items-end justify-center sm:items-center`}>
+      <div
+        className={`fixed inset-0 ${zClass} flex items-end justify-center sm:items-center`}
+        style={zIndex == null ? undefined : { zIndex }}
+      >
         <button
           type="button"
           className="absolute inset-0 bg-ink/25 dark:bg-black/50"
           aria-label="Dismiss overlay"
-          onPointerDown={(event) => {
-            event.preventDefault()
-            requestClose()
-          }}
+          onClick={requestClose}
         />
         <div
           ref={panelRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          className={`relative flex max-h-[92svh] w-full flex-col rounded-t-xl border border-line bg-surface sm:rounded-xl ${
+          className={`relative z-10 flex max-h-[92svh] w-full flex-col rounded-t-xl border border-line bg-surface sm:rounded-xl ${
             wide ? 'max-w-[480px]' : 'max-w-[420px]'
           }`}
         >

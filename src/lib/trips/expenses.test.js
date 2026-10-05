@@ -395,6 +395,7 @@ test('cloud expense code stays off the local store and RPC-only for writes', () 
     'src/lib/trips/expenses.js',
     'src/hooks/useCloudTripExpenses.js',
     'src/components/trips/CloudExpenseSheet.jsx',
+    'src/components/trips/CloudExpenseView.jsx',
     'src/components/trips/CloudExpenseForm.jsx',
   ]
   for (const file of files) {
@@ -414,17 +415,20 @@ test('cloud expense code stays off the local store and RPC-only for writes', () 
   assert.equal(form.includes('useAppData'), false)
 
   const sheet = readFileSync(join(root, 'src/components/trips/CloudExpenseSheet.jsx'), 'utf8')
-  assert.match(sheet, /SettlementLedger/)
-  assert.match(sheet, /PaySheet/)
+  const view = readFileSync(join(root, 'src/components/trips/CloudExpenseView.jsx'), 'utf8')
+  assert.match(sheet, /CloudExpenseView/)
   assert.match(sheet, /addRepayment/)
-  assert.match(sheet, /isPayDraft\(payDraft\)/)
+  assert.match(view, /SettlementLedger/)
+  assert.match(view, /PaySheet/)
+  assert.match(view, /isPayDraft\(payDraft\)/)
   assert.equal(sheet.includes('SettlementPanel'), false)
+  assert.equal(view.includes('SettlementPanel'), false)
 
   const ledger = readFileSync(join(root, 'src/components/expenses/SettlementLedger.jsx'), 'utf8')
-  assert.match(ledger, /schedulePayDraft/)
-  assert.match(ledger, /stopPropagation/)
+  assert.match(ledger, /onPay\(draft\)/)
+  assert.match(ledger, /payDraftFromDebt/)
   const paySheet = readFileSync(join(root, 'src/components/expenses/PaySheet.jsx'), 'utf8')
-  assert.match(paySheet, /z-\[60\]/)
+  assert.match(paySheet, /zIndex=\{60\}/)
   assert.match(paySheet, /onConfirm/)
 
   const layer = readFileSync(join(root, 'src/lib/trips/expenses.js'), 'utf8')

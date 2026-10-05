@@ -7,7 +7,6 @@ import {
   getUserOutstanding,
   paymentMethodLabel,
   payDraftFromDebt,
-  schedulePayDraft,
   settlementIsVisible,
 } from '../../lib/repayments.js'
 import { Avatar } from '../ui/Avatar.jsx'
@@ -17,7 +16,7 @@ export function SettlementLedger({
   trip,
   expenses,
   repayments = [],
-  members,
+  members = [],
   currentUserId,
   currency,
   canPay = false,
@@ -27,9 +26,16 @@ export function SettlementLedger({
 }) {
   if (!settlementIsVisible(trip, members)) return null
 
+  const people = Array.isArray(members) ? members : []
   const debts = getOutstandingDebts(expenses, repayments)
   const view = getUserOutstanding(debts, currentUserId)
-  const memberMap = Object.fromEntries(members.map((member) => [member.userId, member.user]))
+  const memberMap = Object.fromEntries(people.map((member) => [member.userId, member.user]))
+
+  function requestPay(item) {
+    const draft = payDraftFromDebt(item)
+    if (!draft || typeof onPay !== 'function') return
+    onPay(draft)
+  }
   const history = [...repayments].sort(
     (a, b) => String(b.paidAt ?? '').localeCompare(String(a.paidAt ?? '')) || String(b.id).localeCompare(String(a.id)),
   )
@@ -52,12 +58,7 @@ export function SettlementLedger({
               <button
                 type="button"
                 className="text-[13px] text-accent hover:text-accent-hover"
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  schedulePayDraft(onPay, payDraftFromDebt(view.youOwe[0].items[0]))
-                }}
+                onClick={() => requestPay(view.youOwe[0].items[0])}
               >
                 Record payment
               </button>
@@ -86,12 +87,7 @@ export function SettlementLedger({
                           <button
                             type="button"
                             className="text-[13px] text-accent hover:text-accent-hover"
-                            onPointerDown={(event) => event.stopPropagation()}
-                            onClick={(event) => {
-                              event.preventDefault()
-                              event.stopPropagation()
-                              schedulePayDraft(onPay, payDraftFromDebt(item))
-                            }}
+                            onClick={() => requestPay(item)}
                           >
                             Record payment
                           </button>

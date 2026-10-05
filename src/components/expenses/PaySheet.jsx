@@ -68,6 +68,7 @@ export function PaySheet({
       onClose={onClose}
       dirty={dirty}
       zClass="z-[60]"
+      zIndex={60}
       footer={
         <div className="flex justify-end gap-3">
           <SheetCancel onClose={onClose} />
