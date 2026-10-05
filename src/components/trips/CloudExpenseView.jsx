@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { getSpendingSummary } from '../../lib/expenses.js'
 import { isPayDraft, payDraftFromDebt } from '../../lib/repayments.js'
 import { formatMoney } from '../../lib/format.js'
 import { ExpenseRow } from '../expenses/ExpenseRow.jsx'
-import { PaySheet } from '../expenses/PaySheet.jsx'
 import { SettlementLedger } from '../expenses/SettlementLedger.jsx'
 import { Avatar } from '../ui/Avatar.jsx'
 import { Button } from '../ui/Button.jsx'
@@ -25,31 +24,21 @@ export function CloudExpenseView({
   canMutateExpense = () => false,
   repayments = [],
   bookings = [],
-  onAddRepayment,
+  onPay,
   onDeleteRepayment,
   onSaveExpense,
   onDeleteExpense,
   onClose,
 }) {
   const [draft, setDraft] = useState(null)
-  const [payDraft, setPayDraft] = useState(null)
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState(null)
   const [dirty, setDirty] = useState(false)
-  const paySheetOpen = isPayDraft(payDraft)
   const summary = getSpendingSummary(expenses, currentUserId)
   const tripRepayments = useMemo(
     () => repayments.filter((item) => item.tripId === trip.id),
     [repayments, trip.id],
   )
-  const actorIds = people.map((person) => person.userId)
-
-  useEffect(() => {
-    if (!paySheetOpen) return
-    if (!document.getElementById('pay-sheet-form')) {
-      throw new Error('CloudExpenseView committed payDraft but PaySheet did not mount')
-    }
-  }, [paySheetOpen])
 
   async function handleSubmit(input) {
     setBusy(true)
@@ -80,8 +69,14 @@ export function CloudExpenseView({
 
   function openPayDraft(next) {
     const nextDraft = payDraftFromDebt(next)
-    if (!isPayDraft(nextDraft)) return
-    setPayDraft(nextDraft)
+    if (!isPayDraft(nextDraft) || typeof onPay !== 'function') return
+    onPay({
+      draft: nextDraft,
+      trip,
+      expenses,
+      people,
+      repayments: tripRepayments,
+    })
   }
 
   return (
@@ -135,7 +130,7 @@ export function CloudExpenseView({
                 currentUserId={currentUserId}
                 currency={trip.currency}
                 canPay={canCreate}
-                onPay={openPayDraft}
+                onPay={typeof onPay === 'function' ? openPayDraft : undefined}
                 canDeleteRepayment={(item) => item.createdBy === currentUserId || item.fromUserId === currentUserId}
                 onDeleteRepayment={(item) => {
                   onDeleteRepayment?.(item.id)
@@ -199,25 +194,6 @@ export function CloudExpenseView({
           ) : null}
         </div>
       </Sheet>
-
-      {paySheetOpen ? (
-        <PaySheet
-          trip={trip}
-          expenses={expenses}
-          repayments={tripRepayments}
-          members={people}
-          currentUserId={currentUserId}
-          draft={payDraft}
-          onClose={() => setPayDraft(null)}
-          onConfirm={(input) =>
-            onAddRepayment?.(input, {
-              expenses,
-              memberIds: actorIds,
-              repayments: tripRepayments,
-            })
-          }
-        />
-      ) : null}
 
       {draft ? (
         <Sheet

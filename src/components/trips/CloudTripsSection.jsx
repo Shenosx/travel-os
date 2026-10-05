@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { isPayDraft } from '../../lib/repayments.js'
+import { useAppData } from '../../hooks/useAppData.jsx'
 import { isCloudTripOwner } from '../../lib/trips/cloud.js'
 import { useCloudRealtimeRefresh } from '../../hooks/useCloudTripRealtime.js'
 import { CloudBookingsSheet } from './CloudBookingsSheet.jsx'
@@ -8,6 +10,7 @@ import { CloudPeopleSheet } from './CloudPeopleSheet.jsx'
 import { CloudPlacesSheet } from './CloudPlacesSheet.jsx'
 import { CloudPollsSheet } from './CloudPollsSheet.jsx'
 import { CloudActivitySheet } from './CloudActivitySheet.jsx'
+import { CloudPayHost } from './CloudPayHost.jsx'
 import { CloudTripCard } from './CloudTripCard.jsx'
 import { CloudTripComposer } from './CloudTripComposer.jsx'
 
@@ -28,10 +31,12 @@ export function CloudTripsSection({
   const [placesTrip, setPlacesTrip] = useState(null)
   const [bookingsTrip, setBookingsTrip] = useState(null)
   const [expenseTrip, setExpenseTrip] = useState(null)
+  const [paySession, setPaySession] = useState(null)
   const [pollsTrip, setPollsTrip] = useState(null)
   const [activityTrip, setActivityTrip] = useState(null)
   const [busy, setBusy] = useState(false)
   const [formError, setFormError] = useState(null)
+  const { addRepayment } = useAppData()
 
   function closeDraft() {
     if (busy) return
@@ -207,8 +212,19 @@ export function CloudTripsSection({
           trip={expenseTrip}
           currentUserId={currentUserId}
           onClose={() => setExpenseTrip(null)}
+          onPay={(session) => {
+            if (!isPayDraft(session?.draft)) return
+            setPaySession(session)
+          }}
         />
       ) : null}
+
+      <CloudPayHost
+        session={paySession}
+        currentUserId={currentUserId}
+        onClose={() => setPaySession(null)}
+        onConfirm={addRepayment}
+      />
 
       {pollsTrip ? (
         <CloudPollsSheet
