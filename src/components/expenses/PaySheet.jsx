@@ -11,13 +11,14 @@ export function PaySheet({
   trip,
   expenses,
   repayments,
-  members,
+  members = [],
   currentUserId,
   draft,
   onClose,
   onConfirm,
 }) {
-  const recipient = members.find((member) => member.userId === draft.toUserId)?.user
+  const people = Array.isArray(members) ? members : []
+  const recipient = people.find((member) => member.userId === draft.toUserId)?.user
   const [amount, setAmount] = useState(String(draft.amount))
   const [paymentMethod, setPaymentMethod] = useState('maybank')
   const [paidAt, setPaidAt] = useState(todayIso())
@@ -46,7 +47,7 @@ export function PaySheet({
       input,
       expenses,
       repayments,
-      (trip.members ?? members).map((member) => member.userId).filter(Boolean),
+      (trip.members ?? people).map((member) => member.userId).filter(Boolean),
     )
     if (!check.ok) {
       setError(check.error)
@@ -66,6 +67,7 @@ export function PaySheet({
       title="Confirm payment"
       onClose={onClose}
       dirty={dirty}
+      zClass="z-[60]"
       footer={
         <div className="flex justify-end gap-3">
           <SheetCancel onClose={onClose} />

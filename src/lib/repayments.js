@@ -5,7 +5,14 @@
  */
 
 import { convert, getConvertedShares, getExpenseValue, HOME_CURRENCY, roundMoney } from './currency.js'
-import { getBalances, getExpenseActorIds, getSettlements, getSpendByCategory, SHARE_TOLERANCE } from './expenses.js'
+import {
+  CATEGORY_LABEL,
+  getBalances,
+  getExpenseActorIds,
+  getSettlements,
+  getSpendByCategory,
+  SHARE_TOLERANCE,
+} from './expenses.js'
 
 export const PAYMENT_METHODS = [
   { id: 'maybank', label: 'Maybank' },
@@ -50,6 +57,28 @@ export function settlementIsVisible(trip, people) {
   if (isSharedTrip(trip)) return true
   if ((people?.length ?? 0) > 1) return true
   return trip?.visibility === 'shared'
+}
+
+export function payDraftFromDebt(item) {
+  if (!item || item.toId == null || item.outstanding == null) return null
+  return {
+    toUserId: item.toId,
+    expenseId: item.expenseId ?? null,
+    amount: item.outstanding,
+    label: item.description || CATEGORY_LABEL[item.category] || 'Expense',
+  }
+}
+
+export function isPayDraft(value) {
+  return Boolean(value && typeof value === 'object' && value.toUserId && value.amount != null)
+}
+
+/** Open after the current click so a parent sheet overlay cannot dismiss the new sheet. */
+export function schedulePayDraft(open, itemOrDraft) {
+  const draft = itemOrDraft?.toUserId ? itemOrDraft : payDraftFromDebt(itemOrDraft)
+  if (!isPayDraft(draft) || typeof open !== 'function') return false
+  setTimeout(() => open(draft), 0)
+  return true
 }
 
 /**

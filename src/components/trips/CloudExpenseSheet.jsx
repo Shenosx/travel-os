@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { getSpendingSummary } from '../../lib/expenses.js'
+import { isPayDraft } from '../../lib/repayments.js'
 import { formatMoney } from '../../lib/format.js'
 import { useAppData } from '../../hooks/useAppData.jsx'
 import { useCloudTripBookings } from '../../hooks/useCloudTripBookings.js'
@@ -174,7 +175,7 @@ export function CloudExpenseSheet({ trip, currentUserId, onClose }) {
         </div>
       </Sheet>
 
-      {payDraft ? (
+      {isPayDraft(payDraft) ? (
         <PaySheet
           trip={trip}
           expenses={cloud.expenses}

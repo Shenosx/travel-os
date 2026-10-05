@@ -21,6 +21,7 @@ import {
   getMySpending,
   getOutstandingDebts,
   getUserOutstanding,
+  isPayDraft,
   isSharedTrip,
   settlementIsVisible,
 } from '../lib/repayments.js'
@@ -220,7 +221,7 @@ export function ExpensesPage() {
         )}
       </section>
 
-      {payDraft && payTrip ? (
+      {isPayDraft(payDraft) && payTrip ? (
         <PaySheet
           trip={payTrip}
           expenses={getExpensesForTrip(expenses, payTrip.id)}

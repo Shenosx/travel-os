@@ -24,7 +24,7 @@ function focusableIn(root) {
   )
 }
 
-export function Sheet({ title, kicker, children, onClose, footer, wide = false, dirty = false }) {
+export function Sheet({ title, kicker, children, onClose, footer, wide = false, dirty = false, zClass = 'z-50' }) {
   const [askDiscard, setAskDiscard] = useState(false)
   const titleId = useId()
   const panelRef = useRef(null)
@@ -87,12 +87,15 @@ export function Sheet({ title, kicker, children, onClose, footer, wide = false, 
 
   return (
     <SheetCloseContext.Provider value={requestClose}>
-      <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+      <div className={`fixed inset-0 ${zClass} flex items-end justify-center sm:items-center`}>
         <button
           type="button"
           className="absolute inset-0 bg-ink/25 dark:bg-black/50"
           aria-label="Dismiss overlay"
-          onClick={requestClose}
+          onPointerDown={(event) => {
+            event.preventDefault()
+            requestClose()
+          }}
         />
         <div
           ref={panelRef}

@@ -6,6 +6,8 @@ import {
   getOutstandingDebts,
   getUserOutstanding,
   paymentMethodLabel,
+  payDraftFromDebt,
+  schedulePayDraft,
   settlementIsVisible,
 } from '../../lib/repayments.js'
 import { Avatar } from '../ui/Avatar.jsx'
@@ -50,14 +52,11 @@ export function SettlementLedger({
               <button
                 type="button"
                 className="text-[13px] text-accent hover:text-accent-hover"
-                onClick={() => {
-                  const item = view.youOwe[0].items[0]
-                  onPay({
-                    toUserId: item.toId,
-                    expenseId: item.expenseId,
-                    amount: item.outstanding,
-                    label: item.description || CATEGORY_LABEL[item.category] || 'Expense',
-                  })
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  schedulePayDraft(onPay, payDraftFromDebt(view.youOwe[0].items[0]))
                 }}
               >
                 Record payment
@@ -87,14 +86,12 @@ export function SettlementLedger({
                           <button
                             type="button"
                             className="text-[13px] text-accent hover:text-accent-hover"
-                            onClick={() =>
-                              onPay({
-                                toUserId: item.toId,
-                                expenseId: item.expenseId,
-                                amount: item.outstanding,
-                                label: item.description || CATEGORY_LABEL[item.category] || 'Expense',
-                              })
-                            }
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.preventDefault()
+                              event.stopPropagation()
+                              schedulePayDraft(onPay, payDraftFromDebt(item))
+                            }}
                           >
                             Record payment
                           </button>

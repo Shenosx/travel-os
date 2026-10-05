@@ -2,7 +2,13 @@ import { useMemo, useState } from 'react'
 import { formatMoney } from '../../lib/format.js'
 import { CATEGORY_LABEL, getSpendByCategory, getSpendingSummary } from '../../lib/expenses.js'
 import { canDeleteRepayment } from '../../lib/permissions.js'
-import { getMySpending, getOutstandingDebts, getUserOutstanding, isSharedTrip } from '../../lib/repayments.js'
+import {
+  getMySpending,
+  getOutstandingDebts,
+  getUserOutstanding,
+  isPayDraft,
+  isSharedTrip,
+} from '../../lib/repayments.js'
 import { useAppData } from '../../hooks/useAppData.jsx'
 import { useExpenseComposer } from '../expenses/ExpenseComposer.jsx'
 import { ExpenseRow } from '../expenses/ExpenseRow.jsx'
@@ -149,7 +155,7 @@ export function ExpensePanel({
         </ul>
       </div>
 
-      {payDraft ? (
+      {isPayDraft(payDraft) ? (
         <PaySheet
           trip={trip}
           expenses={expenses}

@@ -4,6 +4,9 @@ import { getSpendingSummary } from './expenses.js'
 import {
   getMySpending,
   getOutstandingDebts,
+  isPayDraft,
+  payDraftFromDebt,
+  schedulePayDraft,
   settlementIsVisible,
   getPairOutstanding,
   getUserOutstanding,
@@ -154,6 +157,35 @@ test('personal trip has no settlement', () => {
   assert.equal(isSharedTrip({ members: [{ userId: ME }, { userId: ALI }] }), true)
   assert.equal(isSharedTrip({ members: [] }), false)
   assert.equal(isSharedTrip(null), false)
+})
+
+test('record payment draft opens the pay sheet with debt details', async () => {
+  const opened = []
+  const draft = payDraftFromDebt({
+    toId: ALI,
+    expenseId: 'exp-food',
+    outstanding: 100,
+    description: 'Dinner',
+    category: 'food',
+  })
+  assert.deepEqual(draft, {
+    toUserId: ALI,
+    expenseId: 'exp-food',
+    amount: 100,
+    label: 'Dinner',
+  })
+  assert.equal(isPayDraft(draft), true)
+  assert.equal(isPayDraft(null), false)
+
+  const scheduled = schedulePayDraft((next) => opened.push(next), draft)
+  assert.equal(scheduled, true)
+  assert.equal(opened.length, 0)
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(opened.length, 1)
+  assert.equal(opened[0].amount, 100)
+  assert.equal(opened[0].toUserId, ALI)
+  assert.equal(opened[0].expenseId, 'exp-food')
+  assert.equal(opened[0].label, 'Dinner')
 })
 
 test('settlement UI is visible for shared local trips and cloud people lists', () => {
