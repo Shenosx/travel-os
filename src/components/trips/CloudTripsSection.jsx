@@ -223,7 +223,7 @@ export function CloudTripsSection({
         <CloudPaymentModal
           debt={activeRepayment}
           currentUserId={currentUserId}
-          onCancel={() => setActiveRepayment(null)}
+          onClose={() => setActiveRepayment(null)}
           onSave={addRepayment}
         />
       ) : null}

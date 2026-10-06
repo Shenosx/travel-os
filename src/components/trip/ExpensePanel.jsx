@@ -8,6 +8,7 @@ import {
   getUserOutstanding,
   isPayDraft,
   isSharedTrip,
+  payDraftFromDebt,
 } from '../../lib/repayments.js'
 import { useAppData } from '../../hooks/useAppData.jsx'
 import { useExpenseComposer } from '../expenses/ExpenseComposer.jsx'
@@ -119,7 +120,10 @@ export function ExpensePanel({
           currentUserId={currentUserId}
           currency={currency}
           canPay={canAdd}
-          onPay={setPayDraft}
+          onPay={(debt) => {
+            const draft = payDraftFromDebt(debt)
+            if (draft) setPayDraft(draft)
+          }}
           canDeleteRepayment={(item) => canDeleteRepayment(trip, currentUserId, item)}
           onDeleteRepayment={(item) => {
             const removed = deleteRepayment(item.id)

@@ -23,6 +23,7 @@ import {
   getUserOutstanding,
   isPayDraft,
   isSharedTrip,
+  payDraftFromDebt,
   settlementIsVisible,
 } from '../lib/repayments.js'
 
@@ -140,7 +141,11 @@ export function ExpensesPage() {
               currentUserId={currentUser.id}
               currency={trip.currency}
               canPay={canOnTrip(trip, currentUser.id, 'addExpense')}
-              onPay={(draft) => setPayDraft({ ...draft, tripId: trip.id })}
+              onPay={(debt) => {
+                const draft = payDraftFromDebt(debt)
+                if (!draft) return
+                setPayDraft({ ...draft, tripId: trip.id })
+              }}
               canDeleteRepayment={(item) => canDeleteRepayment(trip, currentUser.id, item)}
               onDeleteRepayment={(item) => {
                 const removed = deleteRepayment(item.id)

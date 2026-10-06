@@ -6,7 +6,6 @@ import {
   getOutstandingDebts,
   getUserOutstanding,
   paymentMethodLabel,
-  payDraftFromDebt,
   settlementIsVisible,
 } from '../../lib/repayments.js'
 import { Avatar } from '../ui/Avatar.jsx'
@@ -31,11 +30,6 @@ export function SettlementLedger({
   const view = getUserOutstanding(debts, currentUserId)
   const memberMap = Object.fromEntries(people.map((member) => [member.userId, member.user]))
 
-  function requestPay(item) {
-    const fromDebt = payDraftFromDebt(item)
-    if (!fromDebt || typeof onPay !== 'function') return
-    onPay(fromDebt)
-  }
   const history = [...repayments].sort(
     (a, b) => String(b.paidAt ?? '').localeCompare(String(a.paidAt ?? '')) || String(b.id).localeCompare(String(a.id)),
   )
@@ -55,7 +49,7 @@ export function SettlementLedger({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <p className="text-[12px] tracking-[0.16em] text-ink-subtle uppercase">You owe</p>
             {canPay && onPay && view.youOwe[0]?.items[0] ? (
-              <RecordPaymentControl onPay={() => requestPay(view.youOwe[0].items[0])} />
+              <RecordPaymentControl onPay={() => onPay(view.youOwe[0].items[0])} />
             ) : null}
           </div>
           {view.youOwe.length ? (
@@ -78,7 +72,7 @@ export function SettlementLedger({
                           </p>
                         </div>
                         {canPay && onPay ? (
-                          <RecordPaymentControl onPay={() => requestPay(item)} />
+                          <RecordPaymentControl onPay={() => onPay(item)} />
                         ) : null}
                       </li>
                     ))}

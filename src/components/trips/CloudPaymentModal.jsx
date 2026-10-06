@@ -6,7 +6,7 @@ import { PAYMENT_METHODS, validateRepayment } from '../../lib/repayments.js'
 import { Button } from '../ui/Button.jsx'
 import { Field, fieldClass, textareaClass } from '../ui/Field.jsx'
 
-export function CloudPaymentModal({ debt, currentUserId, onCancel, onSave }) {
+export function CloudPaymentModal({ debt, currentUserId, onClose, onSave }) {
   const people = Array.isArray(debt?.people) ? debt.people : []
   const trip = debt?.trip
   const toUserId = debt?.toUserId || debt?.toId
@@ -50,7 +50,7 @@ export function CloudPaymentModal({ debt, currentUserId, onCancel, onSave }) {
       setError('Could not record that payment.')
       return
     }
-    onCancel?.()
+    onClose?.()
   }
 
   return (
@@ -127,7 +127,7 @@ export function CloudPaymentModal({ debt, currentUserId, onCancel, onSave }) {
           </Field>
           {error ? <p className="text-sm text-accent">{error}</p> : null}
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" className="text-sm text-ink-muted" onClick={() => onCancel?.()}>
+            <button type="button" className="text-sm text-ink-muted" onClick={() => onClose?.()}>
               Cancel
             </button>
             <Button type="submit">Save</Button>
